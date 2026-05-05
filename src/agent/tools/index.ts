@@ -6,3 +6,4 @@ export { webSearch } from "./search";
 export { submitPlan } from "./submit-plan";
 export { getTraffic } from "./traffic";
 export { getAttractionDetail } from "./attraction-detail";
+export { optimizeRoute } from "./optimize-route";
