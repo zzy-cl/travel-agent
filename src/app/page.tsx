@@ -118,8 +118,10 @@ export default function Home() {
               />
             </div>
 
-            {/* Map Panel */}
-            <MapPanel attractions={[]} onReorder={handleMapReorder} />
+            {/* Map Panel — only visible when plan contains attractions */}
+            {planMarkdown && (
+              <MapPanel attractions={[]} onReorder={handleMapReorder} />
+            )}
 
             {/* Export Panel */}
             <ExportPanel

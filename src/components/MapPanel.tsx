@@ -23,6 +23,7 @@ export function MapPanel({ attractions, onReorder }: MapPanelProps) {
   const amapRef = useRef<any>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [map, setMap] = useState<any>(null);
+  const [collapsed, setCollapsed] = useState(true);
   const onReorderRef = useRef(onReorder);
   onReorderRef.current = onReorder;
 
@@ -65,10 +66,8 @@ export function MapPanel({ attractions, onReorder }: MapPanelProps) {
   useEffect(() => {
     if (!map || !mapLoaded || attractions.length === 0) return;
 
-    // Clear existing markers
     map.clearMap();
 
-    // Add markers for each attraction
     attractions.forEach((attr, i) => {
       if (attr.location) {
         const Marker = amapRef.current?.Marker;
@@ -97,7 +96,6 @@ export function MapPanel({ attractions, onReorder }: MapPanelProps) {
       }
     });
 
-    // Auto-fit view
     if (attractions.some((a) => a.location)) {
       map.setFitView();
     }
@@ -105,8 +103,20 @@ export function MapPanel({ attractions, onReorder }: MapPanelProps) {
 
   return (
     <div className="map-panel">
-      <div ref={mapRef} className="map-container" />
-      {!mapLoaded && <div className="map-loading">地图加载中...</div>}
+      <button
+        className="map-toggle"
+        onClick={() => setCollapsed(!collapsed)}
+      >
+        <span className="map-toggle-icon">{collapsed ? "▸" : "▾"}</span>
+        <span>行程地图</span>
+        <span className="map-toggle-hint">
+          {collapsed ? "展开" : "收起"}
+        </span>
+      </button>
+      <div className={`map-body${collapsed ? " map-body-collapsed" : ""}`}>
+        <div ref={mapRef} className="map-container" />
+        {!mapLoaded && <div className="map-loading">地图加载中...</div>}
+      </div>
     </div>
   );
 }
