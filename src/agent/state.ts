@@ -20,6 +20,10 @@ export const AgentState = Annotation.Root({
     reducer: (_, newVal) => newVal,
     default: () => "",
   }),
+  planMarkdown: Annotation<string>({
+    reducer: (_, newVal) => newVal,
+    default: () => "",
+  }),
 });
 
 export type AgentStateType = typeof AgentState.State;
