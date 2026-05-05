@@ -24,7 +24,7 @@ function routeByIntent(
     case "refinement":
       return "plan_agent";
     case "confirming": {
-      if (!state.planMarkdown) return "plan_agent";
+      if (!state.planMarkdown) return "plan_agent"; // No plan yet, regenerate
       const lastHuman = [...state.messages]
         .reverse()
         .find((m) => m.getType() === "human");
@@ -38,7 +38,7 @@ function routeByIntent(
       if (/导出|下载|export|pdf|json|文件/i.test(text)) {
         return "export";
       }
-      return "plan_agent";
+      return "plan_agent"; // User wants modifications
     }
     case "exporting":
       return "export";
