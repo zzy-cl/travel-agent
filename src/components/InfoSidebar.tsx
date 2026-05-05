@@ -37,9 +37,10 @@ export function InfoSidebar({ collectedInfo, phase }: InfoSidebarProps) {
             let hasValue: boolean;
 
             if (isArray) {
-              const arr = collectedInfo[key] as string[] | undefined;
-              hasValue = !!arr?.length;
-              value = hasValue ? arr!.join("、") : "待收集";
+              const arr = collectedInfo[key];
+              const items = Array.isArray(arr) ? arr.filter((v): v is string => typeof v === "string") : [];
+              hasValue = items.length > 0;
+              value = hasValue ? items.join("、") : "待收集";
             } else {
               const raw = collectedInfo[key];
               hasValue = raw !== undefined && raw !== null && raw !== "";

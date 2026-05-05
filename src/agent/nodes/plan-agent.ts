@@ -24,14 +24,15 @@ export async function callPlanAgent(
     rounds++;
     const allMessages = [...messages, response];
 
-    // Check if submit_plan is among the tool calls — if so, execute and return
-    const hasSubmitPlan = response.tool_calls!.some(
+    // tool_calls is guaranteed non-null by while condition
+    const toolCalls = response.tool_calls!;
+    const hasSubmitPlan = toolCalls.some(
       (tc) => tc.name === "submit_plan",
     );
 
     // Execute all tool calls
     const toolMessages: ToolMessage[] = [];
-    for (const tc of response.tool_calls!) {
+    for (const tc of toolCalls) {
       const tool = planTools.find((t) => t.name === tc.name);
       if (tool) {
         try {
@@ -93,19 +94,21 @@ export async function callPlanAgent(
         AIMessage.isInstance(forceResponse) &&
         forceResponse.tool_calls?.some((tc) => tc.name === "submit_plan")
       ) {
-        const submitTc = forceResponse.tool_calls.find(
+        const submitTc = forceResponse.tool_calls?.find(
           (tc) => tc.name === "submit_plan",
-        )!;
-        const submitTool = planTools.find((t) => t.name === "submit_plan")!;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LangChain tool args
-        const result = await submitTool.invoke(submitTc.args as any);
-        const msg = `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见`;
-        return {
-          messages: [response, ...toolMessages, forceResponse],
-          phase: "confirming",
-          interruptMessage: msg,
-          planMarkdown: typeof result === "string" ? result : JSON.stringify(result),
-        };
+        );
+        const submitTool = planTools.find((t) => t.name === "submit_plan");
+        if (submitTc && submitTool) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LangChain tool args
+          const result = await submitTool.invoke(submitTc.args as any);
+          const msg = `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见`;
+          return {
+            messages: [response, ...toolMessages, forceResponse],
+            phase: "confirming",
+            interruptMessage: msg,
+            planMarkdown: typeof result === "string" ? result : JSON.stringify(result),
+          };
+        }
       }
 
       // If LLM still won't call submit_plan, use text response as plan

@@ -49,7 +49,8 @@ export const optimizeRoute = tool(
         return `无法定位以下地点：${[...new Set(failedNames)].join("、")}。请尝试使用更具体的名称或坐标。`;
       }
 
-      const allPoints = coords as string[];
+      // All coords are guaranteed non-null after the guard above
+      const allPoints: string[] = coords.filter((c): c is string => c !== null);
       const results: string[] = [];
       let accumulatedMinutes = 0;
 

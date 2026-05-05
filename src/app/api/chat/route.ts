@@ -3,6 +3,29 @@ import { AIMessageChunk, HumanMessage } from "@langchain/core/messages";
 import { travelAgent } from "@/agent/graph";
 import { isGraphInterrupt } from "@langchain/langgraph";
 
+// ── SSE Event Types ──
+
+type SSEEvent =
+  | { type: "thinking"; content: string }
+  | { type: "token"; content: string }
+  | { type: "step"; tools: string[] }
+  | { type: "step_done"; tool: string }
+  | { type: "info"; data: unknown }
+  | { type: "phase"; data: string }
+  | { type: "tripStatus"; data: string }
+  | { type: "plan"; markdown: string }
+  | { type: "interrupt"; message: string }
+  | { type: "error"; message: string }
+  | { type: "done" };
+
+interface StreamInput {
+  messages: HumanMessage[];
+  userId?: string;
+  sessionId?: string;
+}
+
+// ── Content Block Type Guards ──
+
 interface ThinkingBlock {
   type: "thinking";
   thinking: string;
@@ -83,7 +106,7 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (data: Record<string, unknown>) => {
+      const send = (data: SSEEvent) => {
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(data)}\n\n`),
         );
@@ -94,7 +117,7 @@ export async function POST(req: NextRequest) {
       const sentToolSteps = new Set<string>();
 
       try {
-        const streamInput: Record<string, unknown> = {
+        const streamInput: StreamInput = {
           messages: [new HumanMessage(message)],
         };
         if (userId) streamInput.userId = userId;
@@ -149,7 +172,7 @@ export async function POST(req: NextRequest) {
               if (ic.collectedInfo) {
                 send({ type: "info", data: ic.collectedInfo });
               }
-              if (ic.phase) {
+              if (ic.phase && typeof ic.phase === "string") {
                 send({ type: "phase", data: ic.phase });
               }
               // Mark all pending tool steps as done
@@ -162,10 +185,10 @@ export async function POST(req: NextRequest) {
             // plan_agent updates
             if (data.plan_agent) {
               const pa = data.plan_agent as Record<string, unknown>;
-              if (pa.phase) {
+              if (pa.phase && typeof pa.phase === "string") {
                 send({ type: "phase", data: pa.phase });
               }
-              if (pa.tripStatus) {
+              if (pa.tripStatus && typeof pa.tripStatus === "string") {
                 send({ type: "tripStatus", data: pa.tripStatus });
               }
               if (pa.planMarkdown && typeof pa.planMarkdown === "string") {
