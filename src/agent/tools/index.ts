@@ -5,3 +5,4 @@ export { getWeather } from "./weather";
 export { webSearch } from "./search";
 export { submitPlan } from "./submit-plan";
 export { getTraffic } from "./traffic";
+export { getAttractionDetail } from "./attraction-detail";
