@@ -1,6 +1,9 @@
 import type { CollectedInfo } from "../../schemas/collected-info";
 
-export function buildPlanSystemPrompt(info: CollectedInfo): string {
+export function buildPlanSystemPrompt(
+  info: CollectedInfo,
+  tripStatus: "planning" | "ongoing" | "completed" = "planning",
+): string {
   const infoSummary = [
     info.destination && `目的地：${info.destination}`,
     info.days && `天数：${info.days}天`,
@@ -12,6 +15,24 @@ export function buildPlanSystemPrompt(info: CollectedInfo): string {
   ]
     .filter(Boolean)
     .join("\n");
+
+  const modeSection = tripStatus === "ongoing"
+    ? `
+## 当前模式：行中助手
+
+用户正在旅行中。你的职责：
+- 回答关于当前行程的问题（景点开放时间、交通方式、餐饮推荐）
+- 查询实时信息（天气、交通状况）
+- 帮助用户调整行程（更换景点、调整顺序、增减天数）
+- 紧急情况处理（景点关闭、天气变化、交通中断）
+
+当用户要求调整行程时，使用 submit_plan 工具提交更新后的计划。
+`
+    : `
+## 当前模式：行程规划
+
+你的职责是为用户生成详细的旅行计划。
+`;
 
   return `你是一个专业的旅行规划师。根据以下用户需求制定详细的旅行计划。
 
@@ -46,5 +67,5 @@ ${infoSummary}
 - 收集到足够信息后，直接调用 submit_plan 生成计划，不需要等用户确认
 - 一次调用 submit_plan 即可，不要重复调用
 - 不确定的信息用工具查询，已有的知识可以直接使用
-`;
+${modeSection}`;
 }

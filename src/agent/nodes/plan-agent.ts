@@ -19,7 +19,7 @@ const modelWithPlanTools = model.bindTools(planTools);
 export async function callPlanAgent(
   state: AgentStateType,
 ): Promise<Partial<AgentStateType>> {
-  const systemPrompt = buildPlanSystemPrompt(state.collectedInfo);
+  const systemPrompt = buildPlanSystemPrompt(state.collectedInfo, state.tripStatus as "planning" | "ongoing" | "completed");
   const messages = [{ role: "system", content: systemPrompt }, ...state.messages];
 
   let response = await modelWithPlanTools.invoke(messages);
