@@ -11,84 +11,70 @@ const fields = [
   { key: "people", label: "人数", suffix: "人" },
   { key: "dateRange", label: "日期" },
   { key: "budget", label: "预算" },
+  { key: "preferences", label: "偏好", isArray: true },
+  { key: "constraints", label: "约束", isArray: true },
 ];
 
-export function InfoSidebar({ collectedInfo, phase }: InfoSidebarProps) {
-  const phaseLabels: Record<string, { text: string; color: string }> = {
-    info_gathering: { text: "信息收集中...", color: "text-blue-500" },
-    planning: { text: "计划生成中...", color: "text-yellow-500" },
-    refinement: { text: "迭代优化中...", color: "text-purple-500" },
-    done: { text: "已完成", color: "text-green-500" },
-  };
+const phaseLabels: Record<string, { text: string; cls: string }> = {
+  info_gathering: { text: "信息收集中...", cls: "phase-info" },
+  planning: { text: "计划生成中...", cls: "phase-planning" },
+  confirming: { text: "等待确认...", cls: "phase-planning" },
+  refinement: { text: "迭代优化中...", cls: "phase-refinement" },
+  done: { text: "已完成", cls: "phase-done" },
+};
 
+export function InfoSidebar({ collectedInfo, phase }: InfoSidebarProps) {
   const phaseInfo = phaseLabels[phase] || phaseLabels.info_gathering;
 
   return (
-    <div className="h-full bg-gray-50 p-4 overflow-y-auto">
-      <h3 className="font-semibold text-gray-800 mb-4">已收集信息</h3>
+    <div className="sidebar-inner">
+      {/* 已收集信息 — 独立滚动区域 */}
+      <div className="sidebar-scroll">
+        <div className="sidebar-title">已收集信息</div>
+        <div className="field-list">
+          {fields.map(({ key, label, suffix, isArray }) => {
+            let value: string;
+            let hasValue: boolean;
 
-      <div className="space-y-2 text-sm">
-        {fields.map(({ key, label, suffix }) => {
-          const value = collectedInfo[key];
-          const hasValue = value !== undefined && value !== null && value !== "";
-          return (
-            <div key={key} className="flex items-center gap-2">
-              <span className={hasValue ? "text-green-500" : "text-yellow-500"}>
-                {hasValue ? "✓" : "○"}
-              </span>
-              <span className="text-gray-600">{label}：</span>
-              <span className={hasValue ? "text-gray-900" : "text-gray-400"}>
-                {hasValue
-                  ? `${value}${suffix || ""}`
-                  : "待收集"}
-              </span>
-            </div>
-          );
-        })}
-
-        {/* 偏好 */}
-        <div className="flex items-start gap-2">
-          <span
-            className={
-              (collectedInfo.preferences as string[])?.length
-                ? "text-green-500"
-                : "text-yellow-500"
+            if (isArray) {
+              const arr = collectedInfo[key] as string[] | undefined;
+              hasValue = !!arr?.length;
+              value = hasValue ? arr!.join("、") : "待收集";
+            } else {
+              const raw = collectedInfo[key];
+              hasValue = raw !== undefined && raw !== null && raw !== "";
+              value = hasValue ? `${raw}${suffix || ""}` : "待收集";
             }
-          >
-            {(collectedInfo.preferences as string[])?.length ? "✓" : "○"}
-          </span>
-          <span className="text-gray-600">偏好：</span>
-          <span className="text-gray-400">
-            {(collectedInfo.preferences as string[])?.length
-              ? (collectedInfo.preferences as string[]).join("、")
-              : "待收集"}
-          </span>
-        </div>
 
-        {/* 约束 */}
-        <div className="flex items-start gap-2">
-          <span
-            className={
-              (collectedInfo.constraints as string[])?.length
-                ? "text-green-500"
-                : "text-yellow-500"
-            }
-          >
-            {(collectedInfo.constraints as string[])?.length ? "✓" : "○"}
-          </span>
-          <span className="text-gray-600">约束：</span>
-          <span className="text-gray-400">
-            {(collectedInfo.constraints as string[])?.length
-              ? (collectedInfo.constraints as string[]).join("、")
-              : "待收集"}
-          </span>
+            return (
+              <div key={key} className="field-row">
+                <div className={`field-check ${hasValue ? "done" : "waiting"}`}>
+                  {hasValue && (
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M3.5 8.5l3 3 6-6" />
+                    </svg>
+                  )}
+                </div>
+                <div className="field-info">
+                  <div className="field-label">{label}</div>
+                  <div className={`field-value ${hasValue ? "" : "pending-text"}`}>
+                    {value}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      <div className="mt-6 pt-4 border-t border-gray-200">
-        <h3 className="font-semibold text-gray-800 mb-2">当前阶段</h3>
-        <div className={`text-sm font-medium ${phaseInfo.color}`}>
-          {phaseInfo.text}
+      {/* 当前阶段 — 固定在底部 */}
+      <div className="sidebar-footer">
+        <div className="phase-section">
+          <div className="phase-title">当前阶段</div>
+          <div className={`phase-badge ${phaseInfo.cls}`}>
+            <span className="dot" />
+            {phaseInfo.text}
+          </div>
         </div>
       </div>
     </div>

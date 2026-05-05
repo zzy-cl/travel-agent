@@ -1,4 +1,4 @@
-import { AIMessage, ToolMessage } from "@langchain/core/messages";
+import { AIMessage } from "@langchain/core/messages";
 import { model } from "../../lib/llm";
 import type { AgentStateType } from "../state";
 import { buildPlanSystemPrompt } from "../prompts/plan";
@@ -50,22 +50,4 @@ export async function callPlanAgent(
   }
 
   return { messages: [response] };
-}
-
-export function afterPlanAgent(
-  state: AgentStateType,
-): Partial<AgentStateType> {
-  const lastMessage = state.messages.at(-1);
-  if (!lastMessage || !AIMessage.isInstance(lastMessage)) return {};
-
-  const hasSubmitPlan = lastMessage.tool_calls?.some(
-    (tc) => tc.name === "submit_plan",
-  );
-
-  if (hasSubmitPlan) {
-    // 计划已提交，phase 保持 planning（interrupt 后由用户输入决定下一步）
-    return {};
-  }
-
-  return {};
 }

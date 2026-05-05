@@ -1,23 +1,101 @@
 "use client";
 
+import { useState, useMemo } from "react";
+
 interface MessageBubbleProps {
   role: "user" | "assistant";
   content: string;
+  isStreaming?: boolean;
 }
 
-export function MessageBubble({ role, content }: MessageBubbleProps) {
+interface ContentPart {
+  type: "thinking" | "text";
+  content: string;
+}
+
+function parseContent(raw: string): ContentPart[] {
+  const parts: ContentPart[] = [];
+  const regex = /<think>([\s\S]*?)<\/think>/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(raw)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: "text", content: raw.slice(lastIndex, match.index) });
+    }
+    parts.push({ type: "thinking", content: match[1].trim() });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < raw.length) {
+    parts.push({ type: "text", content: raw.slice(lastIndex) });
+  }
+
+  return parts.length ? parts : [{ type: "text", content: raw }];
+}
+
+function ThinkingBlock({ content, forceExpand }: { content: string; forceExpand?: boolean }) {
+  const [manualOpen, setManualOpen] = useState(false);
+  const expanded = forceExpand || manualOpen;
+
   return (
-    <div
-      className={`flex ${role === "user" ? "justify-end" : "justify-start"} mb-3`}
-    >
-      <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-          role === "user"
-            ? "bg-blue-600 text-white"
-            : "bg-gray-100 text-gray-900"
-        }`}
+    <div className="thinking-block">
+      <button
+        className="thinking-toggle"
+        onClick={() => {
+          if (!forceExpand) setManualOpen(!manualOpen);
+        }}
+        type="button"
       >
-        <div className="whitespace-pre-wrap">{content}</div>
+        <svg
+          className={`thinking-arrow ${expanded ? "expanded" : ""}`}
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        >
+          <path d="M4 2.5l4 3.5-4 3.5" />
+        </svg>
+        <span>
+          {forceExpand
+            ? "思考中..."
+            : expanded
+              ? "收起思考过程"
+              : "查看思考过程"}
+        </span>
+      </button>
+      {expanded && <div className="thinking-content">{content}</div>}
+    </div>
+  );
+}
+
+export function MessageBubble({ role, content, isStreaming }: MessageBubbleProps) {
+  const parts = useMemo(() => parseContent(content), [content]);
+
+  // 思考进行中：正在流式输出且尚未有正文内容
+  const hasTextContent = parts.some((p) => p.type === "text" && p.content.trim());
+
+  return (
+    <div className={`msg ${role === "user" ? "msg-user" : "msg-ai"} ${isStreaming ? "msg-streaming" : ""}`}>
+      <div className="bubble">
+        {role === "assistant" && parts.some((p) => p.type === "thinking") ? (
+          parts.map((part, i) =>
+            part.type === "thinking" ? (
+              <ThinkingBlock
+                key={`think-${i}`}
+                content={part.content}
+                forceExpand={!!(isStreaming && !hasTextContent)}
+              />
+            ) : (
+              <span key={`text-${i}`}>{part.content}</span>
+            )
+          )
+        ) : (
+          content
+        )}
       </div>
     </div>
   );

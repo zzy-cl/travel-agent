@@ -1,11 +1,27 @@
+// src/lib/llm.ts
+// env 加载 — 确保 .env.local 优先于系统环境变量
 import "dotenv/config";
-import { ChatOpenAI } from "@langchain/openai";
+import dotenv from "dotenv";
+import path from "path";
 
-export const model = new ChatOpenAI({
-  model: "gpt-4o-mini",
-  apiKey: process.env.OPENAI_API_KEY,
-  configuration: {
-    baseURL: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
-  },
-  temperature: 0.7,
+dotenv.config({
+  path: path.resolve(process.cwd(), ".env.local"),
+  override: true,
+});
+
+import { ChatAnthropic } from "@langchain/anthropic";
+
+const baseURL =
+  process.env.ANTHROPIC_BASE_URL || "https://api.deepseek.com/anthropic";
+
+export const model = new ChatAnthropic({
+  model: process.env.LLM_MODEL || "deepseek-v4-pro",
+  anthropicApiUrl: baseURL,
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  maxTokens: 8192,
+  thinking:
+    process.env.LLM_THINKING === "false"
+      ? { type: "disabled" as const }
+      : { type: "enabled" as const, budget_tokens: 10240 },
+  temperature: process.env.LLM_THINKING === "false" ? undefined : 1,
 });

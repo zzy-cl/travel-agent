@@ -1,12 +1,17 @@
 import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import { withRetry, fetchWithTimeout } from "../../lib/fetch-utils";
+import { searchCache } from "../../lib/cache";
 
 const BASE_URL =
   process.env.SEARXNG_BASE_URL || "https://searxng.zhaozeyu.top";
 
 export const webSearch = tool(
   async ({ query, count = 10 }: { query: string; count?: number }) => {
+    const cacheKey = `${query.trim()}:${count}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached !== null) return `(缓存命中)\n${cached}`;
+
     const params = new URLSearchParams({
       q: query.trim(),
       count: count.toString(),
@@ -30,13 +35,16 @@ export const webSearch = tool(
 
       if (!data.results?.length) return "没有找到相关搜索结果。";
 
-      return data.results
+      const result = data.results
         .slice(0, count)
         .map(
           (r, i) =>
             `${i + 1}. **${r.title}**\n   URL: ${r.url}\n   摘要: ${r.content || "无"}`,
         )
         .join("\n\n");
+
+      searchCache.set(cacheKey, result);
+      return result;
     } catch (error) {
       return `搜索失败: ${error instanceof Error ? error.message : String(error)}`;
     }
