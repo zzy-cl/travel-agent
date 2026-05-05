@@ -5,6 +5,8 @@ import { ChatPanel, type ChatPanelHandle } from "@/components/ChatPanel";
 import { InfoSidebar } from "@/components/InfoSidebar";
 import { PlanCard } from "@/components/PlanCard";
 import { MapPanel } from "@/components/MapPanel";
+import { ExportPanel } from "@/components/ExportPanel";
+import { TripStatusBar } from "@/components/TripStatusBar";
 
 export default function Home() {
   const [collectedInfo, setCollectedInfo] = useState<Record<string, unknown>>({
@@ -68,6 +70,7 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-2 relative z-[1]">
+            <TripStatusBar status="planning" />
             {/* Mobile sidebar toggle — CSS 媒体查询控制显示 */}
             <button
               className="md:hidden w-9 h-9 rounded-[12px] border border-white/35 bg-white/15 backdrop-blur-[20px] text-[var(--text-secondary)] flex items-center justify-center text-lg cursor-pointer transition-all active:bg-white/30 active:scale-95 relative overflow-hidden"
@@ -112,6 +115,14 @@ export default function Home() {
 
             {/* Map Panel */}
             <MapPanel attractions={[]} onReorder={handleMapReorder} />
+
+            {/* Export Panel */}
+            <ExportPanel
+              onExport={(format, includeDetails) => {
+                console.log("Export:", format, includeDetails);
+              }}
+              disabled={!planMarkdown}
+            />
           </div>
 
           {/* Desktop Sidebar — CSS 媒体查询控制显示 */}
