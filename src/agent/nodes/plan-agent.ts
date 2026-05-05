@@ -122,12 +122,25 @@ export async function callPlanAgent(
       }
 
       // If LLM still won't call submit_plan, use text response as plan
-      const msg = `旅行计划已生成！请查看上方内容。`;
-      interrupt(msg);
+      const fallbackContent = AIMessage.isInstance(forceResponse)
+        ? (typeof forceResponse.content === "string"
+            ? forceResponse.content
+            : Array.isArray(forceResponse.content)
+              ? forceResponse.content
+                  .filter((b): b is { type: "text"; text: string } => b.type === "text")
+                  .map((b) => b.text)
+                  .join("")
+              : "")
+        : "";
+      const msg = fallbackContent
+        ? `旅行计划已生成！请查看上方内容。`
+        : `抱歉，计划生成遇到了问题。请重试。`;
+      if (fallbackContent) interrupt(msg);
       return {
         messages: [response, ...toolMessages, forceResponse],
-        phase: "confirming",
+        phase: fallbackContent ? "confirming" : "planning",
         interruptMessage: msg,
+        ...(fallbackContent ? { planMarkdown: fallbackContent } : {}),
       };
     }
 

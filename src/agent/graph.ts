@@ -14,6 +14,7 @@ function routeByPhase(
     case "refinement":
       return "plan_agent";
     case "confirming": {
+      if (!state.planMarkdown) return "plan_agent"; // No plan yet, regenerate
       const lastHuman = [...state.messages]
         .reverse()
         .find((m) => m.getType() === "human");

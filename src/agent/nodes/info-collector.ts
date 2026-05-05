@@ -4,6 +4,7 @@ import { model } from "../../lib/llm";
 import type { AgentStateType } from "../state";
 import { infoSystemPrompt } from "../prompts/info";
 import { confirmInfo, updateCollectedInfo } from "../tools";
+import { collectedInfoSchema } from "../../schemas/collected-info";
 
 const infoTools = [updateCollectedInfo, confirmInfo];
 const modelWithInfoTools = model.bindTools(infoTools);
@@ -47,17 +48,16 @@ export async function infoCollector(
 
   for (const tc of response.tool_calls) {
     if (tc.name === "update_collected_info") {
-      const newInfo = tc.args as Record<string, unknown>;
-      updatedInfo = {
-        ...updatedInfo,
-        ...newInfo,
-        preferences: newInfo.preferences
-          ? (newInfo.preferences as string[])
-          : updatedInfo.preferences,
-        constraints: newInfo.constraints
-          ? (newInfo.constraints as string[])
-          : updatedInfo.constraints,
-      };
+      const parsed = collectedInfoSchema.partial().safeParse(tc.args);
+      if (parsed.success) {
+        const newInfo = parsed.data;
+        updatedInfo = {
+          ...updatedInfo,
+          ...newInfo,
+          preferences: newInfo.preferences ?? updatedInfo.preferences,
+          constraints: newInfo.constraints ?? updatedInfo.constraints,
+        };
+      }
     }
     if (tc.name === "confirm_info") {
       hasConfirm = true;
