@@ -126,3 +126,5 @@ export { submitPlan } from "./submit-plan";
 export { getTraffic } from "./traffic";
 export { getAttractionDetail } from "./attraction-detail";
 export { optimizeRoute } from "./optimize-route";
+export { exportMarkdown } from "./export-markdown";
+export { exportJson } from "./export-json";

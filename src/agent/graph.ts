@@ -2,11 +2,7 @@ import { END, START, StateGraph, MemorySaver } from "@langchain/langgraph";
 import { AgentState, type AgentStateType } from "./state";
 import { infoCollector } from "./nodes/info-collector";
 import { callPlanAgent } from "./nodes/plan-agent";
-
-// ── Temporary placeholder — will be replaced in Task 10 ──
-function exportNode(): Partial<AgentStateType> {
-  return { phase: "confirming" };
-}
+import { exportNode } from "./nodes/export";
 
 // ── Router: single entry point based on tripStatus and phase ──
 function routeByIntent(
