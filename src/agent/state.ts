@@ -1,7 +1,7 @@
 // src/agent/state.ts
 import { Annotation } from "@langchain/langgraph";
 import { BaseMessage } from "@langchain/core/messages";
-import { collectedInfoSchema, type CollectedInfo } from "../schemas/collected-info";
+import type { CollectedInfo } from "../schemas/collected-info";
 
 export type Phase =
   | "info_gathering"
@@ -22,7 +22,7 @@ export const AgentState = Annotation.Root({
     reducer: (_, newVal) => newVal,
     default: () => ({ preferences: [], constraints: [] }),
   }),
-  phase: Annotation<string>({
+  phase: Annotation<Phase>({
     reducer: (_, newVal) => newVal,
     default: () => "info_gathering",
   }),
