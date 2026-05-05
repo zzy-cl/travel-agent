@@ -4,3 +4,4 @@ export { searchAttractions, searchNearby } from "./amap";
 export { getWeather } from "./weather";
 export { webSearch } from "./search";
 export { submitPlan } from "./submit-plan";
+export { getTraffic } from "./traffic";
