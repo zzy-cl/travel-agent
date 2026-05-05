@@ -16,6 +16,10 @@ export const AgentState = Annotation.Root({
     reducer: (_, newVal) => newVal,
     default: () => "info_gathering",
   }),
+  interruptMessage: Annotation<string>({
+    reducer: (_, newVal) => newVal,
+    default: () => "",
+  }),
 });
 
 export type AgentStateType = typeof AgentState.State;
