@@ -22,6 +22,8 @@ export function MapPanel({ attractions, onReorder }: MapPanelProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [map, setMap] = useState<any>(null);
+  const onReorderRef = useRef(onReorder);
+  onReorderRef.current = onReorder;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -74,12 +76,12 @@ export function MapPanel({ attractions, onReorder }: MapPanelProps) {
             content: `${i + 1}. ${attr.name}`,
             direction: "top",
           },
-          draggable: !!onReorder,
+          draggable: !!onReorderRef.current,
         });
 
-        if (onReorder) {
+        if (onReorderRef.current) {
           marker.on("dragend", () => {
-            onReorder(
+            onReorderRef.current!(
               { day: attr.day || 1, index: attr.order || i },
               { day: attr.day || 1, index: i },
               attr.name,
@@ -95,7 +97,7 @@ export function MapPanel({ attractions, onReorder }: MapPanelProps) {
     if (attractions.some((a) => a.location)) {
       map.setFitView();
     }
-  }, [map, mapLoaded, attractions, onReorder]);
+  }, [map, mapLoaded, attractions]);
 
   return (
     <div className="map-panel">
