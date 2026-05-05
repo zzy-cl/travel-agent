@@ -1,5 +1,4 @@
 import { AIMessage, ToolMessage } from "@langchain/core/messages";
-import { interrupt } from "@langchain/langgraph";
 import { model } from "../../lib/llm";
 import type { AgentStateType } from "../state";
 import { infoSystemPrompt } from "../prompts/info";
@@ -91,8 +90,6 @@ export async function infoCollector(
     ]
       .filter(Boolean)
       .join("\n");
-
-    interrupt(`已收集到以下信息：\n\n${summary}\n\n确认无误请回复"确认"，或告诉我需要补充的信息。`);
 
     // Save trip to DB (non-blocking)
     if (state.userId) {

@@ -152,6 +152,11 @@ export async function POST(req: NextRequest) {
               if (ic.phase) {
                 send({ type: "phase", data: ic.phase });
               }
+              // Mark all pending tool steps as done
+              for (const name of sentToolSteps) {
+                send({ type: "step_done", tool: name });
+              }
+              sentToolSteps.clear();
             }
 
             // plan_agent updates
@@ -166,6 +171,11 @@ export async function POST(req: NextRequest) {
               if (pa.planMarkdown && typeof pa.planMarkdown === "string") {
                 send({ type: "plan", markdown: pa.planMarkdown });
               }
+              // Mark all pending tool steps as done
+              for (const name of sentToolSteps) {
+                send({ type: "step_done", tool: name });
+              }
+              sentToolSteps.clear();
             }
 
             // save — emit done phase

@@ -1,6 +1,4 @@
 import { AIMessage, ToolMessage, HumanMessage } from "@langchain/core/messages";
-import { interrupt } from "@langchain/langgraph";
-
 import { model } from "../../lib/llm";
 import type { AgentStateType } from "../state";
 import { buildPlanSystemPrompt } from "../prompts/plan";
@@ -72,7 +70,6 @@ export async function callPlanAgent(
         (m) => m.name === "submit_plan",
       )?.content;
       const msg = `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见，如"第二天换成海边景点"`;
-      interrupt(msg);
       return {
         messages: [response, ...toolMessages],
         phase: "confirming",
@@ -103,7 +100,6 @@ export async function callPlanAgent(
         // tc.args is Record<string, any> from LangChain, cast needed for typed tool.invoke()
         const result = await submitTool.invoke(submitTc.args as any);
         const msg = `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见`;
-        interrupt(msg);
         return {
           messages: [response, ...toolMessages, forceResponse],
           phase: "confirming",
@@ -126,7 +122,6 @@ export async function callPlanAgent(
       const msg = fallbackContent
         ? `旅行计划已生成！请查看上方内容。`
         : `抱歉，计划生成遇到了问题。请告诉我更多关于你的偏好，我会重新规划。`;
-      interrupt(msg);
       return {
         messages: [response, ...toolMessages, forceResponse],
         phase: "confirming",
