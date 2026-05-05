@@ -1,19 +1,10 @@
 import { AIMessage, ToolMessage, HumanMessage } from "@langchain/core/messages";
-import type { StructuredTool } from "@langchain/core/tools";
 import { interrupt } from "@langchain/langgraph";
 
 import { model } from "../../lib/llm";
 import type { AgentStateType } from "../state";
 import { buildPlanSystemPrompt } from "../prompts/plan";
-import {
-  searchAttractions,
-  searchNearby,
-  getWeather,
-  webSearch,
-  submitPlan,
-} from "../tools";
-
-const planTools: StructuredTool[] = [searchAttractions, searchNearby, getWeather, webSearch, submitPlan];
+import { planTools } from "../tools";
 const modelWithPlanTools = model.bindTools(planTools);
 
 export async function callPlanAgent(
