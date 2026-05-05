@@ -47,6 +47,7 @@ interface MemoryCacheEntry<T> {
 }
 
 class MemoryCache {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic cache store
   private store = new Map<string, MemoryCacheEntry<any>>();
   private maxSize: number;
 

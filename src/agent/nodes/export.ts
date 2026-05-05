@@ -48,6 +48,7 @@ ${state.planMarkdown}
     const tool = exportTools.find((t) => t.name === tc.name);
     if (tool) {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LangChain tool args
         const result = await tool.invoke(tc.args as any);
         exportedContent = typeof result === "string" ? result : JSON.stringify(result);
         toolMessages.push(

@@ -20,16 +20,22 @@ interface MapPanelProps {
 
 export function MapPanel({ attractions, onReorder }: MapPanelProps) {
   const mapRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AMap SDK types unavailable
   const amapRef = useRef<any>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AMap SDK types unavailable
   const [map, setMap] = useState<any>(null);
   const [collapsed, setCollapsed] = useState(true);
   const onReorderRef = useRef(onReorder);
-  onReorderRef.current = onReorder;
+
+  useEffect(() => {
+    onReorderRef.current = onReorder;
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AMap SDK types unavailable
     let mapInstance: any = null;
 
     const loadMap = async () => {

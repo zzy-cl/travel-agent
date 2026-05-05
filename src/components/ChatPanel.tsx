@@ -245,7 +245,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
       abortControllerRef.current = null;
       scrollToBottom();
     }
-  }, [threadId, scrollToBottom]);
+  }, [threadId, scrollToBottom, onInfoUpdate, onPhaseUpdate, onPlanUpdate, onTripStatusUpdate]);
 
   useImperativeHandle(ref, () => ({
     sendMessage: (text: string) => handleSubmit(text),

@@ -35,7 +35,7 @@ export async function callPlanAgent(
       const tool = planTools.find((t) => t.name === tc.name);
       if (tool) {
         try {
-          // tc.args is Record<string, any> from LangChain, cast needed for typed tool.invoke()
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LangChain tool args
           const result = await tool.invoke(tc.args as any);
           toolMessages.push(
             new ToolMessage({
@@ -97,7 +97,7 @@ export async function callPlanAgent(
           (tc) => tc.name === "submit_plan",
         )!;
         const submitTool = planTools.find((t) => t.name === "submit_plan")!;
-        // tc.args is Record<string, any> from LangChain, cast needed for typed tool.invoke()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LangChain tool args
         const result = await submitTool.invoke(submitTc.args as any);
         const msg = `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见`;
         return {

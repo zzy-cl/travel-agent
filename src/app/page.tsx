@@ -32,6 +32,11 @@ export default function Home() {
     [],
   );
 
+  const handleTripStatusUpdate = useCallback(
+    (s: string) => setTripStatus(s as "planning" | "ongoing" | "completed"),
+    [],
+  );
+
   // Swipe-to-close on mobile sidebar overlay
   const touchStartX = useRef(0);
   const handleSidebarTouchStart = useCallback(
@@ -114,7 +119,7 @@ export default function Home() {
                 }
                 onPhaseUpdate={setPhase}
                 onPlanUpdate={setPlanMarkdown}
-                onTripStatusUpdate={(s) => setTripStatus(s as "planning" | "ongoing" | "completed")}
+                onTripStatusUpdate={handleTripStatusUpdate}
               />
             </div>
 
