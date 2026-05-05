@@ -1,8 +1,9 @@
 import { tool } from "@langchain/core/tools";
+import { z } from "zod";
 import { collectedInfoSchema } from "../../schemas/collected-info";
 
 export const updateCollectedInfo = tool(
-  async (info) => {
+  async (info: Partial<z.infer<typeof collectedInfoSchema>>) => {
     return JSON.stringify(info);
   },
   {

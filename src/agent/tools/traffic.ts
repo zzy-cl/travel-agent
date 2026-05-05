@@ -20,7 +20,7 @@ export const getTraffic = tool(
       const path = data.route.paths[0];
       const distance = (parseInt(path.distance, 10) / 1000).toFixed(1);
       const duration = Math.round(parseInt(path.duration, 10) / 60);
-      const trafficLights = path.traffic_lights || "未知";
+      const trafficLights = path.traffic_lights ?? "未知";
 
       return `从${origin}到${destination}：距离${distance}公里，预计${duration}分钟，途经${trafficLights}个红绿灯。${path.tolls ? `过路费约${path.tolls}元。` : ""}`;
     } catch (e) {

@@ -51,6 +51,7 @@ export const optimizeRoute = tool(
 
       const allPoints = coords as string[];
       const results: string[] = [];
+      let accumulatedMinutes = 0;
 
       for (let i = 0; i < allPoints.length - 1; i++) {
         const origin = allPoints[i];
@@ -78,31 +79,32 @@ export const optimizeRoute = tool(
         if (data.status === "1" && data.route) {
           let duration: string;
           let distance: string;
+          let routeMinutes = 0;
 
           if (mode === "walking") {
             const path = data.route.paths?.[0];
-            duration = path
-              ? `${Math.round(parseInt(path.duration, 10) / 60)}分钟`
-              : "未知";
+            routeMinutes = path ? Math.round(parseInt(path.duration, 10) / 60) : 0;
+            duration = path ? `${routeMinutes}分钟` : "未知";
             distance = path
               ? `${(parseInt(path.distance, 10) / 1000).toFixed(1)}公里`
               : "未知";
           } else if (mode === "transit") {
-            duration = data.route.transits?.[0]
-              ? `${Math.round(parseInt(data.route.transits[0].duration, 10) / 60)}分钟`
-              : "未知";
-            distance = data.route.transits?.[0]
-              ? `${(parseInt(data.route.transits[0].distance, 10) / 1000).toFixed(1)}公里`
+            const transit = data.route.transits?.[0];
+            routeMinutes = transit ? Math.round(parseInt(transit.duration, 10) / 60) : 0;
+            duration = transit ? `${routeMinutes}分钟` : "未知";
+            distance = transit
+              ? `${(parseInt(transit.distance, 10) / 1000).toFixed(1)}公里`
               : "未知";
           } else {
             const path = data.route.paths?.[0];
-            duration = path
-              ? `${Math.round(parseInt(path.duration, 10) / 60)}分钟`
-              : "未知";
+            routeMinutes = path ? Math.round(parseInt(path.duration, 10) / 60) : 0;
+            duration = path ? `${routeMinutes}分钟` : "未知";
             distance = path
               ? `${(parseInt(path.distance, 10) / 1000).toFixed(1)}公里`
               : "未知";
           }
+
+          accumulatedMinutes += routeMinutes;
 
           results.push(
             `${originName} → ${destName}：${distance}，约${duration}`
@@ -115,14 +117,8 @@ export const optimizeRoute = tool(
       let summary = `## 路线规划（${transport === "walk" ? "步行" : transport === "drive" ? "驾车" : "公共交通"}）\n\n`;
       summary += results.join("\n");
 
-      if (timeConstraint) {
-        const totalMinutes = results.reduce((sum, r) => {
-          const match = r.match(/约(\d+)分钟/);
-          return sum + (match ? parseInt(match[1], 10) : 0);
-        }, 0);
-        if (totalMinutes > timeConstraint) {
-          summary += `\n\n⚠️ 总耗时约${totalMinutes}分钟，超出${timeConstraint}分钟的约束。建议减少景点或选择更快的交通方式。`;
-        }
+      if (timeConstraint && accumulatedMinutes > timeConstraint) {
+        summary += `\n\n⚠️ 总耗时约${accumulatedMinutes}分钟，超出${timeConstraint}分钟的约束。建议减少景点或选择更快的交通方式。`;
       }
 
       return summary;

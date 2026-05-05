@@ -15,13 +15,21 @@ export async function exportNode(
     .slice(-1)
     .find((m) => m.getType() === "human")?.content || "";
 
-  const prompt = `用户请求导出旅行计划。当前行程内容如下：
+  const collectedInfoStr = state.collectedInfo
+    ? JSON.stringify(state.collectedInfo, null, 2)
+    : "暂无";
+
+  const prompt = `用户请求导出旅行计划。
+
+用户已收集的旅行信息：${collectedInfoStr}
+
+当前行程内容如下：
 
 ${state.planMarkdown}
 
 用户请求：${formatHint}
 
-请调用合适的导出工具（export_markdown 或 export_json）来生成导出文件。`;
+请调用合适的导出工具（export_markdown 或 export_json）来生成导出文件。调用 export_json 时，将上面的已收集信息作为 collectedInfo 参数传入。`;
 
   const response = await modelWithExportTools.invoke([
     { role: "user", content: prompt },

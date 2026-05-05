@@ -1,6 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { cache } from "../../lib/cache";
+import { fetchWithTimeout, withRetry } from "../../lib/fetch-utils";
 
 const attractionDetailSchema = z.object({
   name: z.string().describe("景点名称"),
@@ -33,11 +34,14 @@ async function fetchAttractionDetail(
     try {
       const searchQuery = `${name} ${label}`;
       const searxngUrl = process.env.SEARXNG_URL || "http://localhost:8080";
-      const res = await fetch(
-        `${searxngUrl}/search?q=${encodeURIComponent(searchQuery)}&format=json&categories=general&language=zh`,
-      );
-      const data = await res.json();
-      const snippet = data.results?.[0]?.snippet || "暂无相关信息";
+      const data = await withRetry(async () => {
+        const res = await fetchWithTimeout(
+          `${searxngUrl}/search?q=${encodeURIComponent(searchQuery)}&format=json&categories=general&language=zh`,
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<{ results?: Array<{ snippet?: string }> }>;
+      });
+      const snippet = data?.results?.[0]?.snippet || "暂无相关信息";
       parts.push(`### ${label}\n${snippet}`);
     } catch {
       parts.push(`### ${label}\n暂无相关信息`);

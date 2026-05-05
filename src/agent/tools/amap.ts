@@ -6,15 +6,16 @@ import { withRetry, fetchWithTimeout } from "../../lib/fetch-utils";
 const apiKey = process.env.AMAP_API_KEY;
 
 export const searchAttractions = tool(
-  async ({ keyword, city }: { keyword: string; city: string }) => {
+  async ({ keyword, city }: { keyword?: string; city: string }) => {
     if (!apiKey) return "错误：未设置 AMAP_API_KEY 环境变量。";
 
-    const cacheKey = `attractions:${city.trim()}:${keyword.trim()}`;
+    const kw = (keyword || "景点").trim();
+    const cacheKey = `attractions:${city.trim()}:${kw}`;
     const cached = amapCache.get(cacheKey);
     if (cached !== null) return `(缓存命中)\n${cached}`;
 
     const params = new URLSearchParams({
-      keywords: keyword.trim(),
+      keywords: kw,
       city: city.trim(),
       types: "1000",
       key: apiKey,
@@ -40,7 +41,7 @@ export const searchAttractions = tool(
       });
 
       if (data.status !== "1" || !data.pois?.length) {
-        const result = `未找到 "${city}" 中与 "${keyword}" 相关的景点。`;
+        const result = `未找到 "${city}" 中与 "${kw}" 相关的景点。`;
         amapCache.set(cacheKey, result);
         return result;
       }

@@ -20,6 +20,7 @@ interface MapPanelProps {
 
 export function MapPanel({ attractions, onReorder }: MapPanelProps) {
   const mapRef = useRef<HTMLDivElement>(null);
+  const amapRef = useRef<any>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [map, setMap] = useState<any>(null);
   const onReorderRef = useRef(onReorder);
@@ -38,6 +39,8 @@ export function MapPanel({ attractions, onReorder }: MapPanelProps) {
           version: "2.0",
           plugins: ["AMap.Marker", "AMap.Polyline", "AMap.Geocoder"],
         });
+
+        amapRef.current = AMap;
 
         if (mapRef.current) {
           mapInstance = new AMap.Map(mapRef.current, {
@@ -68,8 +71,9 @@ export function MapPanel({ attractions, onReorder }: MapPanelProps) {
     // Add markers for each attraction
     attractions.forEach((attr, i) => {
       if (attr.location) {
-        const AMap = (window as any).AMap;
-        const marker = new AMap.Marker({
+        const Marker = amapRef.current?.Marker;
+        if (!Marker) return;
+        const marker = new Marker({
           position: attr.location,
           title: attr.name,
           label: {

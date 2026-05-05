@@ -65,7 +65,8 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
       localStorage.setItem("travel-thread-id", id);
       return id;
     }
-    return crypto.randomUUID();
+    // SSR fallback: simple random ID (replaced on client hydration)
+    return `ssr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);

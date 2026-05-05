@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { AIMessageChunk, HumanMessage } from "@langchain/core/messages";
 import { travelAgent } from "@/agent/graph";
+import { isGraphInterrupt } from "@langchain/langgraph";
 
 interface ThinkingBlock {
   type: "thinking";
@@ -176,7 +177,7 @@ export async function POST(req: NextRequest) {
 
         send({ type: "done" });
       } catch (error: unknown) {
-        if (error instanceof Error && error.name === "GraphInterrupt") {
+        if (isGraphInterrupt(error)) {
           send({ type: "interrupt", message: "等待用户确认" });
         } else {
           send({

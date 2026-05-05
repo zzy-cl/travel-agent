@@ -10,7 +10,7 @@ const modelWithPlanTools = model.bindTools(planTools);
 export async function callPlanAgent(
   state: AgentStateType,
 ): Promise<Partial<AgentStateType>> {
-  const systemPrompt = buildPlanSystemPrompt(state.collectedInfo, state.tripStatus as "planning" | "ongoing" | "completed");
+  const systemPrompt = buildPlanSystemPrompt(state.collectedInfo, state.tripStatus);
   const messages = [{ role: "system", content: systemPrompt }, ...state.messages];
 
   let response = await modelWithPlanTools.invoke(messages);
@@ -125,11 +125,11 @@ export async function callPlanAgent(
         : "";
       const msg = fallbackContent
         ? `旅行计划已生成！请查看上方内容。`
-        : `抱歉，计划生成遇到了问题。请重试。`;
-      if (fallbackContent) interrupt(msg);
+        : `抱歉，计划生成遇到了问题。请告诉我更多关于你的偏好，我会重新规划。`;
+      interrupt(msg);
       return {
         messages: [response, ...toolMessages, forceResponse],
-        phase: fallbackContent ? "confirming" : "planning",
+        phase: "confirming",
         interruptMessage: msg,
         ...(fallbackContent ? { planMarkdown: fallbackContent } : {}),
       };
