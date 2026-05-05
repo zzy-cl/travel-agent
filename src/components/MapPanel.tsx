@@ -102,7 +102,7 @@ export function MapPanel({ attractions, onReorder }: MapPanelProps) {
   }, [map, mapLoaded, attractions]);
 
   return (
-    <div className="map-panel">
+    <div className="map-panel glass">
       <button
         className="map-toggle"
         onClick={() => setCollapsed(!collapsed)}

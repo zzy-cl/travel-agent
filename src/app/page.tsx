@@ -215,7 +215,11 @@ export default function Home() {
             a.click();
             URL.revokeObjectURL(url);
           }}
-          onRetry={() => setPlanMarkdown(null)}
+          onRetry={() => {
+            setPlanMarkdown(null);
+            setPhase("planning");
+            chatPanelRef.current?.sendMessage("帮我重新规划旅行计划");
+          }}
         />
       )}
     </>

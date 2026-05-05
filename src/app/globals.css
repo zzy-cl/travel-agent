@@ -616,15 +616,47 @@ body {
   flex-direction: column;
   overflow: hidden;
   animation: planSlideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  background: rgba(255,255,255, 0.28);
-  backdrop-filter: blur(80px) saturate(220%);
-  -webkit-backdrop-filter: blur(80px) saturate(220%);
-  border: 1px solid rgba(255,255,255, 0.45);
+  background: rgba(255,255,255, 0.62);
+  backdrop-filter: blur(120px) saturate(200%);
+  -webkit-backdrop-filter: blur(120px) saturate(200%);
+  border: 1px solid rgba(255,255,255, 0.50);
   box-shadow:
-    0 16px 48px rgba(0,0,0,0.08),
-    0 4px 16px rgba(0,0,0,0.04),
-    inset 0 1px 0 rgba(255,255,255,0.60),
-    inset 0 -1px 0 rgba(255,255,255,0.10);
+    0 20px 60px rgba(0,0,0,0.12),
+    0 4px 16px rgba(0,0,0,0.06),
+    inset 0 1px 0 rgba(255,255,255,0.70),
+    inset 0 -1px 0 rgba(255,255,255,0.15);
+}
+
+/* ── Collapsed plan card ── */
+.plan-card-collapsed {
+  border-radius: var(--radius-pill);
+  max-height: none;
+  width: auto;
+  min-width: 200px;
+  background: rgba(255,255,255, 0.45);
+}
+
+.plan-collapsed-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font);
+  transition: background 0.15s;
+}
+
+.plan-collapsed-bar:hover {
+  background: rgba(255,255,255, 0.20);
+}
+
+.plan-collapsed-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-left: auto;
 }
 .plan-card::before {
   content: '';
