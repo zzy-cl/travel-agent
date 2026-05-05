@@ -1,7 +1,17 @@
 // src/agent/state.ts
 import { Annotation } from "@langchain/langgraph";
 import { BaseMessage } from "@langchain/core/messages";
-import type { CollectedInfo } from "../schemas/collected-info";
+import { collectedInfoSchema, type CollectedInfo } from "../schemas/collected-info";
+
+export type Phase =
+  | "info_gathering"
+  | "planning"
+  | "refinement"
+  | "confirming"
+  | "exporting"
+  | "done";
+
+export type TripStatus = "planning" | "ongoing" | "completed";
 
 export const AgentState = Annotation.Root({
   messages: Annotation<BaseMessage[]>({
@@ -21,6 +31,18 @@ export const AgentState = Annotation.Root({
     default: () => "",
   }),
   planMarkdown: Annotation<string>({
+    reducer: (_, newVal) => newVal,
+    default: () => "",
+  }),
+  tripStatus: Annotation<TripStatus>({
+    reducer: (_, newVal) => newVal,
+    default: () => "planning",
+  }),
+  sessionId: Annotation<string>({
+    reducer: (_, newVal) => newVal,
+    default: () => "",
+  }),
+  userId: Annotation<string>({
     reducer: (_, newVal) => newVal,
     default: () => "",
   }),
