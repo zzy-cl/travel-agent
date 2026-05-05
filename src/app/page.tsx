@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import { ChatPanel } from "@/components/ChatPanel";
 import { InfoSidebar } from "@/components/InfoSidebar";
 import { PlanCard } from "@/components/PlanCard";
+import { MapPanel } from "@/components/MapPanel";
 
 export default function Home() {
   const [collectedInfo, setCollectedInfo] = useState<Record<string, unknown>>({
@@ -81,15 +82,21 @@ export default function Home() {
 
         {/* Main area */}
         <div className="flex-1 flex gap-3 overflow-hidden min-h-0">
-          {/* Chat Panel */}
-          <div className="flex-1 flex flex-col glass rounded-[var(--radius-xl)] overflow-hidden min-w-0">
-            <ChatPanel
-              onInfoUpdate={(info) =>
-                setCollectedInfo((prev) => ({ ...prev, ...info }))
-              }
-              onPhaseUpdate={setPhase}
-              onPlanUpdate={setPlanMarkdown}
-            />
+          {/* Chat + Map column */}
+          <div className="flex-1 flex flex-col gap-3 min-w-0">
+            {/* Chat Panel */}
+            <div className="flex-1 flex flex-col glass rounded-[var(--radius-xl)] overflow-hidden min-h-0">
+              <ChatPanel
+                onInfoUpdate={(info) =>
+                  setCollectedInfo((prev) => ({ ...prev, ...info }))
+                }
+                onPhaseUpdate={setPhase}
+                onPlanUpdate={setPlanMarkdown}
+              />
+            </div>
+
+            {/* Map Panel */}
+            <MapPanel attractions={[]} />
           </div>
 
           {/* Desktop Sidebar — CSS 媒体查询控制显示 */}
