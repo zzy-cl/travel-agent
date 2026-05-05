@@ -1,6 +1,6 @@
 import { AIMessage, ToolMessage, HumanMessage } from "@langchain/core/messages";
 import type { StructuredTool } from "@langchain/core/tools";
-import { interrupt } from "@langchain/langgraph";
+
 import { model } from "../../lib/llm";
 import type { AgentStateType } from "../state";
 import { buildPlanSystemPrompt } from "../prompts/plan";
@@ -45,6 +45,7 @@ export async function callPlanAgent(
       const tool = planTools.find((t) => t.name === tc.name);
       if (tool) {
         try {
+          // tc.args is Record<string, any> from LangChain, cast needed for typed tool.invoke()
           const result = await tool.invoke(tc.args as any);
           toolMessages.push(
             new ToolMessage({
@@ -62,6 +63,14 @@ export async function callPlanAgent(
             }),
           );
         }
+      } else {
+        toolMessages.push(
+          new ToolMessage({
+            content: `未知工具: ${tc.name}`,
+            tool_call_id: tc.id!,
+            name: tc.name,
+          }),
+        );
       }
     }
 
@@ -97,6 +106,7 @@ export async function callPlanAgent(
           (tc) => tc.name === "submit_plan",
         )!;
         const submitTool = planTools.find((t) => t.name === "submit_plan")!;
+        // tc.args is Record<string, any> from LangChain, cast needed for typed tool.invoke()
         const result = await submitTool.invoke(submitTc.args as any);
         return {
           messages: [response, ...toolMessages, forceResponse],
