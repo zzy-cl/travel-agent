@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { ChatPanel } from "@/components/ChatPanel";
+import { ChatPanel, type ChatPanelHandle } from "@/components/ChatPanel";
 import { InfoSidebar } from "@/components/InfoSidebar";
 import { PlanCard } from "@/components/PlanCard";
 import { MapPanel } from "@/components/MapPanel";
@@ -14,6 +14,20 @@ export default function Home() {
   const [phase, setPhase] = useState("info_gathering");
   const [planMarkdown, setPlanMarkdown] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const chatPanelRef = useRef<ChatPanelHandle>(null);
+
+  const handleMapReorder = useCallback(
+    (from: { day: number; index: number }, to: { day: number; index: number }, name: string) => {
+      if (from.day === to.day && from.index === to.index) return;
+
+      const message = `[系统] 用户调整了行程：将「${name}」从第${from.day}天第${from.index + 1}个位置移到第${to.day}天第${to.index + 1}个位置，请重新规划路线。`;
+
+      // Send as a user message
+      chatPanelRef.current?.sendMessage(message);
+    },
+    [],
+  );
 
   // Swipe-to-close on mobile sidebar overlay
   const touchStartX = useRef(0);
@@ -87,6 +101,7 @@ export default function Home() {
             {/* Chat Panel */}
             <div className="flex-1 flex flex-col glass rounded-[var(--radius-xl)] overflow-hidden min-h-0">
               <ChatPanel
+                ref={chatPanelRef}
                 onInfoUpdate={(info) =>
                   setCollectedInfo((prev) => ({ ...prev, ...info }))
                 }
@@ -96,7 +111,7 @@ export default function Home() {
             </div>
 
             {/* Map Panel */}
-            <MapPanel attractions={[]} />
+            <MapPanel attractions={[]} onReorder={handleMapReorder} />
           </div>
 
           {/* Desktop Sidebar — CSS 媒体查询控制显示 */}

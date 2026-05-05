@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from "react";
 import { MessageBubble } from "./MessageBubble";
 
 interface Message {
@@ -12,6 +12,10 @@ interface StepItem {
   id: string;
   label: string;
   status: "pending" | "running" | "done";
+}
+
+export interface ChatPanelHandle {
+  sendMessage: (text: string) => void;
 }
 
 interface ChatPanelProps {
@@ -37,11 +41,10 @@ const TOOL_LABELS: Record<string, string> = {
   submit_plan: "正在生成旅行计划...",
 };
 
-export function ChatPanel({
-  onInfoUpdate,
-  onPhaseUpdate,
-  onPlanUpdate,
-}: ChatPanelProps) {
+export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function ChatPanel(
+  { onInfoUpdate, onPhaseUpdate, onPlanUpdate },
+  ref,
+) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -227,6 +230,10 @@ export function ChatPanel({
     }
   };
 
+  useImperativeHandle(ref, () => ({
+    sendMessage: (text: string) => handleSubmit(text),
+  }), [handleSubmit]);
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     handleSubmit();
@@ -334,4 +341,4 @@ export function ChatPanel({
       </form>
     </div>
   );
-}
+});
