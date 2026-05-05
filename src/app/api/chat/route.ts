@@ -1,9 +1,5 @@
-// src/app/api/chat/route.ts
 import { NextRequest } from "next/server";
-import {
-  AIMessageChunk,
-  HumanMessage,
-} from "@langchain/core/messages";
+import { AIMessageChunk, HumanMessage } from "@langchain/core/messages";
 import { travelAgent } from "@/agent/graph";
 
 interface ThinkingBlock {
@@ -84,7 +80,9 @@ export async function POST(req: NextRequest) {
         );
       };
 
-      let sentToolStep = false;
+      // Bug #5 fix: track sent tool names per node, reset on node transition
+      let currentNode = "";
+      const sentToolSteps = new Set<string>();
 
       try {
         const eventStream = await travelAgent.stream(
@@ -93,95 +91,75 @@ export async function POST(req: NextRequest) {
         );
 
         for await (const rawChunk of eventStream) {
-          // LangGraph 1.2: chunk 是 [mode, payload] 元组
           const chunk = rawChunk as [string, unknown];
           const mode = chunk[0];
           const payload = chunk[1];
 
-          // ── messages 模式：逐 token 流式输出 ──
+          // ── messages mode: token-level streaming ──
           if (mode === "messages") {
             const [msgChunk, meta] = payload as [
               AIMessageChunk,
               { langgraph_node?: string },
             ];
 
-            // content 增量（thinking / text）
+            // Reset tool step tracker on node transition (Bug #5 fix)
+            if (meta.langgraph_node && meta.langgraph_node !== currentNode) {
+              currentNode = meta.langgraph_node;
+              sentToolSteps.clear();
+            }
+
             const { thinking, text } = extractIncremental(msgChunk.content);
             if (thinking) send({ type: "thinking", content: thinking });
             if (text) send({ type: "token", content: text });
 
-            // 工具调用开始
-            if (
-              msgChunk.tool_call_chunks?.length &&
-              meta.langgraph_node === "plan_agent" &&
-              !sentToolStep
-            ) {
-              const names = msgChunk.tool_call_chunks
-                .map((tc) => tc.name)
-                .filter(Boolean) as string[];
-              if (names.length) {
-                send({ type: "step", tools: names });
-                sentToolStep = true;
+            // Tool call steps — emit once per unique tool name (Bug #5 fix)
+            if (msgChunk.tool_call_chunks?.length) {
+              for (const tc of msgChunk.tool_call_chunks) {
+                if (tc.name && !sentToolSteps.has(tc.name)) {
+                  sentToolSteps.add(tc.name);
+                  send({ type: "step", tools: [tc.name] });
+                }
               }
             }
             continue;
           }
 
-          // ── updates 模式：节点级别状态更新 ──
+          // ── updates mode: node-level state updates ──
           if (mode === "updates") {
             const data = payload as Record<string, unknown>;
 
-            // reset tool step tracker on node transitions
-            if (data.info_agent || data.plan_agent) sentToolStep = false;
-
-            // process_info
-            if (data.process_info) {
-              const pi = data.process_info as Record<string, unknown>;
-              if (pi.collectedInfo) {
-                send({ type: "info", data: pi.collectedInfo });
+            // info_collector updates
+            if (data.info_collector) {
+              const ic = data.info_collector as Record<string, unknown>;
+              if (ic.collectedInfo) {
+                send({ type: "info", data: ic.collectedInfo });
               }
-              if (pi.phase) {
-                send({ type: "phase", data: pi.phase });
+              if (ic.phase) {
+                send({ type: "phase", data: ic.phase });
               }
             }
 
-            // plan_tools
-            if (data.plan_tools) {
-              const pt = data.plan_tools as {
-                messages?: Array<Record<string, unknown>>;
-              };
-              if (pt.messages?.length) {
-                for (const msg of pt.messages) {
-                  if (
-                    msg.name === "submit_plan" &&
-                    typeof msg.content === "string"
-                  ) {
-                    send({ type: "plan", markdown: msg.content });
-                    send({ type: "step_done", tool: "submit_plan" });
-                  } else if (msg.name) {
-                    send({ type: "step_done", tool: msg.name });
-                  }
-                }
+            // plan_agent updates
+            if (data.plan_agent) {
+              const pa = data.plan_agent as Record<string, unknown>;
+              if (pa.phase) {
+                send({ type: "phase", data: pa.phase });
+              }
+              if (pa.planMarkdown && typeof pa.planMarkdown === "string") {
+                send({ type: "plan", markdown: pa.planMarkdown });
               }
             }
 
-            // after_plan / save
-            const stateUpdate = data.after_plan || data.save;
-            if (stateUpdate && typeof stateUpdate === "object") {
-              const su = stateUpdate as Record<string, unknown>;
-              if (su.phase) {
-                send({ type: "phase", data: su.phase });
-              }
+            // save — emit done phase
+            if (data.save) {
+              send({ type: "phase", data: "done" });
             }
           }
         }
 
         send({ type: "done" });
       } catch (error: unknown) {
-        if (
-          error instanceof Error &&
-          error.name === "GraphInterrupt"
-        ) {
+        if (error instanceof Error && error.name === "GraphInterrupt") {
           send({ type: "interrupt", message: "等待用户确认" });
         } else {
           send({
