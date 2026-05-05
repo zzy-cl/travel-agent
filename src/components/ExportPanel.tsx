@@ -7,7 +7,7 @@ interface ExportPanelProps {
 
 export function ExportPanel({ onExport, disabled }: ExportPanelProps) {
   return (
-    <div className="export-panel glass">
+    <div className="export-panel glass rounded-[var(--radius-xl)]">
       <div className="export-title">导出行程</div>
       <div className="export-buttons">
         <button
