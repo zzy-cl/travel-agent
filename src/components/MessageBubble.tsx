@@ -1,6 +1,14 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import rehypeHighlight from "rehype-highlight";
+
+const remarkPlugins = [remarkGfm, remarkMath];
+const rehypePlugins = [rehypeKatex, rehypeHighlight];
 
 interface MessageBubbleProps {
   role: "user" | "assistant";
@@ -78,10 +86,18 @@ export function MessageBubble({ role, content, isStreaming }: MessageBubbleProps
   // 思考进行中：正在流式输出且尚未有正文内容
   const hasTextContent = parts.some((p) => p.type === "text" && p.content.trim());
 
+  if (role === "user") {
+    return (
+      <div className="msg msg-user">
+        <div className="bubble">{content}</div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`msg ${role === "user" ? "msg-user" : "msg-ai"} ${isStreaming ? "msg-streaming" : ""}`}>
+    <div className={`msg msg-ai ${isStreaming ? "msg-streaming" : ""}`}>
       <div className="bubble">
-        {role === "assistant" && parts.some((p) => p.type === "thinking") ? (
+        {parts.some((p) => p.type === "thinking") ? (
           parts.map((part, i) =>
             part.type === "thinking" ? (
               <ThinkingBlock
@@ -90,11 +106,19 @@ export function MessageBubble({ role, content, isStreaming }: MessageBubbleProps
                 forceExpand={!!(isStreaming && !hasTextContent)}
               />
             ) : (
-              <span key={`text-${i}`}>{part.content}</span>
+              <div key={`text-${i}`} className="markdown-body">
+                <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>
+                  {part.content}
+                </ReactMarkdown>
+              </div>
             )
           )
         ) : (
-          content
+          <div className="markdown-body">
+            <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>
+              {content}
+            </ReactMarkdown>
+          </div>
         )}
       </div>
     </div>
