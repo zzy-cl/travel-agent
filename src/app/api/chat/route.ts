@@ -47,15 +47,23 @@ function extractIncremental(
 function validateBody(body: unknown): {
   message: string;
   threadId: string;
+  userId?: string;
+  sessionId?: string;
 } | { error: string } {
   if (!body || typeof body !== "object") return { error: "请求体为空" };
-  const { message, threadId } = body as Record<string, unknown>;
+  const { message, threadId, userId, sessionId } = body as Record<string, unknown>;
   if (typeof message !== "string" || !message.trim())
     return { error: "message 不能为空" };
   if (message.length > 5000) return { error: "message 超过 5000 字符限制" };
   if (typeof threadId !== "string" || !threadId.trim())
     return { error: "threadId 不能为空" };
-  return { message: message.trim(), threadId: threadId.trim() };
+  const result: { message: string; threadId: string; userId?: string; sessionId?: string } = {
+    message: message.trim(),
+    threadId: threadId.trim(),
+  };
+  if (typeof userId === "string" && userId.trim()) result.userId = userId.trim();
+  if (typeof sessionId === "string" && sessionId.trim()) result.sessionId = sessionId.trim();
+  return result;
 }
 
 export async function POST(req: NextRequest) {
@@ -64,7 +72,7 @@ export async function POST(req: NextRequest) {
   if ("error" in parsed) {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
-  const { message, threadId } = parsed;
+  const { message, threadId, userId, sessionId } = parsed;
 
   const config = {
     configurable: { thread_id: threadId },
@@ -85,8 +93,14 @@ export async function POST(req: NextRequest) {
       const sentToolSteps = new Set<string>();
 
       try {
+        const streamInput: Record<string, unknown> = {
+          messages: [new HumanMessage(message)],
+        };
+        if (userId) streamInput.userId = userId;
+        if (sessionId) streamInput.sessionId = sessionId;
+
         const eventStream = await travelAgent.stream(
-          { messages: [new HumanMessage(message)] },
+          streamInput,
           config,
         );
 

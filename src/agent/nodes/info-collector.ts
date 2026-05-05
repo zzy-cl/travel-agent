@@ -5,6 +5,7 @@ import type { AgentStateType } from "../state";
 import { infoSystemPrompt } from "../prompts/info";
 import { confirmInfo, updateCollectedInfo, loadPreferences } from "../tools";
 import { collectedInfoSchema } from "../../schemas/collected-info";
+import { db } from "../../lib/db";
 
 const infoTools = [updateCollectedInfo, confirmInfo];
 const modelWithInfoTools = model.bindTools(infoTools);
@@ -92,6 +93,19 @@ export async function infoCollector(
       .join("\n");
 
     interrupt(`已收集到以下信息：\n\n${summary}\n\n确认无误请回复"确认"，或告诉我需要补充的信息。`);
+
+    // Save trip to DB (non-blocking)
+    if (state.userId) {
+      db.trip.create({
+        data: {
+          userId: state.userId,
+          planMarkdown: "",
+          collectedInfo: JSON.stringify(updatedInfo),
+          status: "planning",
+        },
+      }).catch(() => {}); // Non-critical: don't block on failure
+    }
+
     return {
       messages: [response, ...toolMessages],
       collectedInfo: updatedInfo,
