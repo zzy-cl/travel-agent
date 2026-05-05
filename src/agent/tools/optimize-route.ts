@@ -2,6 +2,21 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { fetchWithTimeout, withRetry } from "../../lib/fetch-utils";
 
+async function geocode(address: string, apiKey: string): Promise<string | null> {
+  const url = `https://restapi.amap.com/v3/geocode/geo?address=${encodeURIComponent(address)}&key=${apiKey}`;
+  try {
+    const res = await withRetry(() => fetchWithTimeout(url));
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status === "1" && data.geocodes?.[0]?.location) {
+      return data.geocodes[0].location; // "lng,lat"
+    }
+  } catch {
+    // Fall through
+  }
+  return null;
+}
+
 const optimizeRouteSchema = z.object({
   attractions: z.array(z.string()).describe("景点名称列表"),
   startPoint: z.string().describe("出发点（如酒店名称或地址）"),
@@ -22,12 +37,26 @@ export const optimizeRoute = tool(
     if (attractions.length === 0) return "没有景点可供规划路线";
 
     try {
-      const allPoints = [startPoint, ...attractions, startPoint];
+      // Geocode all points first
+      const allNames = [startPoint, ...attractions, startPoint];
+      const coords: (string | null)[] = await Promise.all(
+        allNames.map((name) => geocode(name, apiKey))
+      );
+
+      // Check for geocoding failures
+      const failedNames = allNames.filter((_, i) => !coords[i]);
+      if (failedNames.length > 0) {
+        return `无法定位以下地点：${[...new Set(failedNames)].join("、")}。请尝试使用更具体的名称或坐标。`;
+      }
+
+      const allPoints = coords as string[];
       const results: string[] = [];
 
       for (let i = 0; i < allPoints.length - 1; i++) {
         const origin = allPoints[i];
         const destination = allPoints[i + 1];
+        const originName = allNames[i];
+        const destName = allNames[i + 1];
 
         const modeMap: Record<string, string> = {
           walk: "walking",
@@ -40,7 +69,7 @@ export const optimizeRoute = tool(
         const res = await withRetry(() => fetchWithTimeout(url));
         if (!res.ok) {
           results.push(
-            `${origin} → ${destination}：路线查询失败（HTTP ${res.status}）`
+            `${originName} → ${destName}：路线查询失败（HTTP ${res.status}）`
           );
           continue;
         }
@@ -76,10 +105,10 @@ export const optimizeRoute = tool(
           }
 
           results.push(
-            `${origin} → ${destination}：${distance}，约${duration}`
+            `${originName} → ${destName}：${distance}，约${duration}`
           );
         } else {
-          results.push(`${origin} → ${destination}：路线查询失败`);
+          results.push(`${originName} → ${destName}：路线查询失败`);
         }
       }
 

@@ -22,6 +22,7 @@ interface ChatPanelProps {
   onInfoUpdate: (info: Record<string, unknown>) => void;
   onPhaseUpdate: (phase: string) => void;
   onPlanUpdate: (markdown: string) => void;
+  onTripStatusUpdate?: (status: string) => void;
 }
 
 const SUGGESTIONS = [
@@ -39,10 +40,17 @@ const TOOL_LABELS: Record<string, string> = {
   update_collected_info: "记录旅行信息",
   confirm_info: "确认信息完整",
   submit_plan: "正在生成旅行计划...",
+  get_traffic: "查询实时交通状况",
+  get_attraction_detail: "查询景点详细信息",
+  optimize_route: "优化游览路线",
+  export_markdown: "导出 Markdown 文件",
+  export_json: "导出 JSON 文件",
+  save_preferences: "保存旅行偏好",
+  load_preferences: "加载旅行偏好",
 };
 
 export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function ChatPanel(
-  { onInfoUpdate, onPhaseUpdate, onPlanUpdate },
+  { onInfoUpdate, onPhaseUpdate, onPlanUpdate, onTripStatusUpdate },
   ref,
 ) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -61,6 +69,10 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const inputRef = useRef(input);
+  inputRef.current = input;
+  const isStreamingRef = useRef(isStreaming);
+  isStreamingRef.current = isStreaming;
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -74,9 +86,9 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
     abortControllerRef.current?.abort();
   }, []);
 
-  const handleSubmit = async (text?: string) => {
-    const userMessage = (text || input).trim();
-    if (!userMessage || isStreaming) return;
+  const handleSubmit = useCallback(async (text?: string) => {
+    const userMessage = (text || inputRef.current).trim();
+    if (!userMessage || isStreamingRef.current) return;
 
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
@@ -187,6 +199,10 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
                 onPlanUpdate(data.markdown);
                 break;
 
+              case "tripStatus":
+                onTripStatusUpdate?.(data.data);
+                break;
+
               case "interrupt":
                 assistantContent += `\n\n---\n\n*${data.message}*`;
                 break;
@@ -228,7 +244,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
       abortControllerRef.current = null;
       scrollToBottom();
     }
-  };
+  }, [threadId, scrollToBottom]);
 
   useImperativeHandle(ref, () => ({
     sendMessage: (text: string) => handleSubmit(text),

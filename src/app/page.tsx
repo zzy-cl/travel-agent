@@ -15,6 +15,7 @@ export default function Home() {
   });
   const [phase, setPhase] = useState("info_gathering");
   const [planMarkdown, setPlanMarkdown] = useState<string | null>(null);
+  const [tripStatus, setTripStatus] = useState<"planning" | "ongoing" | "completed">("planning");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const chatPanelRef = useRef<ChatPanelHandle>(null);
@@ -70,7 +71,10 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-2 relative z-[1]">
-            <TripStatusBar status="planning" />
+            <TripStatusBar
+              status={tripStatus}
+              destination={typeof collectedInfo.destination === "string" ? collectedInfo.destination : undefined}
+            />
             {/* Mobile sidebar toggle — CSS 媒体查询控制显示 */}
             <button
               className="md:hidden w-9 h-9 rounded-[12px] border border-white/35 bg-white/15 backdrop-blur-[20px] text-[var(--text-secondary)] flex items-center justify-center text-lg cursor-pointer transition-all active:bg-white/30 active:scale-95 relative overflow-hidden"
@@ -110,6 +114,7 @@ export default function Home() {
                 }
                 onPhaseUpdate={setPhase}
                 onPlanUpdate={setPlanMarkdown}
+                onTripStatusUpdate={(s) => setTripStatus(s as "planning" | "ongoing" | "completed")}
               />
             </div>
 
@@ -118,8 +123,33 @@ export default function Home() {
 
             {/* Export Panel */}
             <ExportPanel
-              onExport={(format, includeDetails) => {
-                console.log("Export:", format, includeDetails);
+              onExport={(format: "md" | "json") => {
+                if (!planMarkdown) return;
+                let content: string;
+                let ext: string;
+                let mimeType: string;
+                if (format === "json") {
+                  content = JSON.stringify({
+                    format: "travel-plan",
+                    version: "1.0",
+                    exportedAt: new Date().toISOString(),
+                    collectedInfo,
+                    planMarkdown,
+                  }, null, 2);
+                  ext = "json";
+                  mimeType = "application/json";
+                } else {
+                  content = planMarkdown;
+                  ext = "md";
+                  mimeType = "text/markdown";
+                }
+                const blob = new Blob([content], { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `travel-plan-${new Date().toISOString().slice(0, 10)}.${ext}`;
+                a.click();
+                URL.revokeObjectURL(url);
               }}
               disabled={!planMarkdown}
             />

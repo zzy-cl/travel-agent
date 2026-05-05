@@ -9,6 +9,7 @@ import { submitPlan } from "./submit-plan";
 import { getTraffic } from "./traffic";
 import { getAttractionDetail } from "./attraction-detail";
 import { optimizeRoute } from "./optimize-route";
+import { savePreferences, loadPreferences } from "./save-preferences";
 
 // Register tools with cache TTLs (in seconds)
 // searchAttractions and searchNearby: cache 1 hour
@@ -113,19 +114,37 @@ toolRegistry.register({
   cacheTTL: 0,
 });
 
+toolRegistry.register({
+  name: "save_preferences",
+  description: "保存用户的旅行偏好设置",
+  schema: z.object({
+    userId: z.string(),
+    preferences: z.record(z.string(), z.unknown()),
+  }),
+  execute: async (input) => {
+    const result = await savePreferences.invoke(input);
+    return typeof result === "string" ? result : JSON.stringify(result);
+  },
+  cacheTTL: 0,
+});
+
+toolRegistry.register({
+  name: "load_preferences",
+  description: "加载用户的旅行偏好设置",
+  schema: z.object({ userId: z.string() }),
+  execute: async (input) => {
+    const result = await loadPreferences.invoke(input);
+    return typeof result === "string" ? result : JSON.stringify(result);
+  },
+  cacheTTL: 0,
+});
+
 // Export LangChain-compatible tools for graph nodes
 export const planTools = toolRegistry.toLangChainTools();
 
-// Direct exports for backward compatibility
+// Direct exports for node usage (not available as LLM tools via registry)
 export { confirmInfo } from "./confirm-info";
 export { updateCollectedInfo } from "./update-info";
-export { searchAttractions, searchNearby } from "./amap";
-export { getWeather } from "./weather";
-export { webSearch } from "./search";
-export { submitPlan } from "./submit-plan";
-export { getTraffic } from "./traffic";
-export { getAttractionDetail } from "./attraction-detail";
-export { optimizeRoute } from "./optimize-route";
+export { loadPreferences } from "./save-preferences";
 export { exportMarkdown } from "./export-markdown";
 export { exportJson } from "./export-json";
-export { savePreferences, loadPreferences } from "./save-preferences";

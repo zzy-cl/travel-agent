@@ -1,7 +1,7 @@
 "use client";
 
 interface ExportPanelProps {
-  onExport: (format: "md" | "json", includeDetails: boolean) => void;
+  onExport: (format: "md" | "json") => void;
   disabled?: boolean;
 }
 
@@ -12,14 +12,14 @@ export function ExportPanel({ onExport, disabled }: ExportPanelProps) {
       <div className="export-buttons">
         <button
           className="export-btn"
-          onClick={() => onExport("md", false)}
+          onClick={() => onExport("md")}
           disabled={disabled}
         >
           Markdown
         </button>
         <button
           className="export-btn"
-          onClick={() => onExport("json", false)}
+          onClick={() => onExport("json")}
           disabled={disabled}
         >
           JSON

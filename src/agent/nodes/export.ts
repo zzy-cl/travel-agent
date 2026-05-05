@@ -1,4 +1,5 @@
 import { AIMessage, ToolMessage } from "@langchain/core/messages";
+import { interrupt } from "@langchain/langgraph";
 import { model } from "../../lib/llm";
 import type { AgentStateType } from "../state";
 import { exportMarkdown, exportJson } from "../tools";
@@ -64,6 +65,8 @@ ${state.planMarkdown}
   const exportMessage = exportedContent
     ? `导出完成！以下是导出内容：\n\n\`\`\`\n${exportedContent.slice(0, 500)}${exportedContent.length > 500 ? "..." : ""}\n\`\`\``
     : "导出失败，请重试。";
+
+  interrupt(exportMessage);
 
   return {
     messages: [response, ...toolMessages],

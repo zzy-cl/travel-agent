@@ -16,7 +16,14 @@ export const savePreferences = tool(
   async ({ userId, ...preferences }: z.infer<typeof preferencesSchema>) => {
     try {
       const existing = await db.user.findUnique({ where: { id: userId } });
-      const currentPrefs = existing ? JSON.parse(existing.preferences) : {};
+      let currentPrefs: Record<string, unknown> = {};
+      if (existing?.preferences) {
+        try {
+          currentPrefs = JSON.parse(existing.preferences);
+        } catch {
+          // Invalid JSON in DB, start fresh
+        }
+      }
       const merged = { ...currentPrefs, ...preferences };
 
       if (existing) {

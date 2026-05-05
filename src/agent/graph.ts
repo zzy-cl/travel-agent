@@ -28,7 +28,7 @@ function routeByIntent(
         lastHuman && typeof lastHuman.content === "string"
           ? lastHuman.content
           : "";
-      if (/^(没问题|确认|确定|好的|可以|OK|ok|行|嗯|对|保存)\b/.test(text)) {
+      if (/^(没问题|确认|确定|好的|可以|ok|行|嗯|对|保存|没问题的|确认一下|yes|sure|good|looks\s*good)[\s!！。.、，,]*/i.test(text)) {
         return "save";
       }
       if (/导出|下载|export|pdf|json|文件/i.test(text)) {

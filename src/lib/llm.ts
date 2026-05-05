@@ -26,29 +26,35 @@ export const model = new ChatAnthropic({
       : { type: "enabled" as const, budget_tokens: 10240 },
   temperature: process.env.LLM_THINKING === "false" ? undefined : 1,
   callbacks: [
-    {
-      handleLLMEnd(output: any) {
-        const usage = output.llmOutput?.usage;
-        if (usage) {
-          logCall({
-            timestamp: new Date(),
-            userId: "",
-            sessionId: "",
-            node: "unknown",
-            type: "llm",
-            model: process.env.LLM_MODEL || "deepseek-v4-pro",
-            inputTokens: usage.input_tokens || 0,
-            outputTokens: usage.output_tokens || 0,
-            cost: calculateCost(
-              process.env.LLM_MODEL || "deepseek-v4-pro",
-              usage.input_tokens || 0,
-              usage.output_tokens || 0,
-            ),
-            duration: 0,
-            success: true,
-          });
-        }
-      },
-    },
+    (() => {
+      let startTime = 0;
+      return {
+        handleLLMStart() {
+          startTime = Date.now();
+        },
+        handleLLMEnd(output: any) {
+          const usage = output.llmOutput?.usage;
+          if (usage) {
+            logCall({
+              timestamp: new Date(),
+              userId: "",
+              sessionId: "",
+              node: "unknown",
+              type: "llm",
+              model: process.env.LLM_MODEL || "deepseek-v4-pro",
+              inputTokens: usage.input_tokens || 0,
+              outputTokens: usage.output_tokens || 0,
+              cost: calculateCost(
+                process.env.LLM_MODEL || "deepseek-v4-pro",
+                usage.input_tokens || 0,
+                usage.output_tokens || 0,
+              ),
+              duration: startTime ? Date.now() - startTime : 0,
+              success: true,
+            });
+          }
+        },
+      };
+    })(),
   ],
 });

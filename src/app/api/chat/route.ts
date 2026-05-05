@@ -159,6 +159,9 @@ export async function POST(req: NextRequest) {
               if (pa.phase) {
                 send({ type: "phase", data: pa.phase });
               }
+              if (pa.tripStatus) {
+                send({ type: "tripStatus", data: pa.tripStatus });
+              }
               if (pa.planMarkdown && typeof pa.planMarkdown === "string") {
                 send({ type: "plan", markdown: pa.planMarkdown });
               }

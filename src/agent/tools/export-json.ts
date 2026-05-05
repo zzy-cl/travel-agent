@@ -5,11 +5,20 @@ export const exportJson = tool(
   ({ planMarkdown, collectedInfo }: { planMarkdown: string; collectedInfo?: string }) => {
     if (!planMarkdown) return "没有可导出的行程";
 
+    let parsedInfo: unknown = null;
+    if (collectedInfo) {
+      try {
+        parsedInfo = JSON.parse(collectedInfo);
+      } catch {
+        parsedInfo = { raw: collectedInfo };
+      }
+    }
+
     const result = {
       format: "travel-plan",
       version: "1.0",
       exportedAt: new Date().toISOString(),
-      collectedInfo: collectedInfo ? JSON.parse(collectedInfo) : null,
+      collectedInfo: parsedInfo,
       planMarkdown,
       days: extractDaysFromMarkdown(planMarkdown),
     };

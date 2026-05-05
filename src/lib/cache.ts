@@ -39,11 +39,7 @@ export class LRUCache<K, V> {
   }
 }
 
-export const searchCache = new LRUCache<string, string>(50, 30);
-export const weatherCache = new LRUCache<string, string>(100, 15);
-export const amapCache = new LRUCache<string, string>(50, 60);
-
-// --- Simple TTL-based memory cache for tool registry ---
+// --- TTL + LRU memory cache for tool registry ---
 
 interface MemoryCacheEntry<T> {
   value: T;
@@ -52,6 +48,11 @@ interface MemoryCacheEntry<T> {
 
 class MemoryCache {
   private store = new Map<string, MemoryCacheEntry<any>>();
+  private maxSize: number;
+
+  constructor(maxSize: number = 500) {
+    this.maxSize = maxSize;
+  }
 
   get<T>(key: string): T | null {
     const entry = this.store.get(key);
@@ -60,10 +61,19 @@ class MemoryCache {
       this.store.delete(key);
       return null;
     }
+    // Move to end (most recently used)
+    this.store.delete(key);
+    this.store.set(key, entry);
     return entry.value as T;
   }
 
   set<T>(key: string, value: T, ttlSeconds: number): void {
+    if (this.store.has(key)) this.store.delete(key);
+    // Evict oldest if at capacity
+    if (this.store.size >= this.maxSize) {
+      const oldestKey = this.store.keys().next().value;
+      if (oldestKey) this.store.delete(oldestKey);
+    }
     this.store.set(key, {
       value,
       expiresAt: Date.now() + ttlSeconds * 1000,
@@ -80,3 +90,8 @@ class MemoryCache {
 }
 
 export const cache = new MemoryCache();
+
+// Legacy LRU caches (used by amap.ts, search.ts, weather.ts)
+export const searchCache = new LRUCache<string, string>(50, 30);
+export const weatherCache = new LRUCache<string, string>(100, 15);
+export const amapCache = new LRUCache<string, string>(50, 60);
