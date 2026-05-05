@@ -1,5 +1,6 @@
 import { AIMessage, ToolMessage, HumanMessage } from "@langchain/core/messages";
 import type { StructuredTool } from "@langchain/core/tools";
+import { interrupt } from "@langchain/langgraph";
 
 import { model } from "../../lib/llm";
 import type { AgentStateType } from "../state";
@@ -79,10 +80,12 @@ export async function callPlanAgent(
       const planMarkdown = toolMessages.find(
         (m) => m.name === "submit_plan",
       )?.content;
+      const msg = `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见，如"第二天换成海边景点"`;
+      interrupt(msg);
       return {
         messages: [response, ...toolMessages],
         phase: "confirming",
-        interruptMessage: `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见，如"第二天换成海边景点"`,
+        interruptMessage: msg,
         ...(planMarkdown ? { planMarkdown: String(planMarkdown) } : {}),
       };
     }
@@ -108,19 +111,23 @@ export async function callPlanAgent(
         const submitTool = planTools.find((t) => t.name === "submit_plan")!;
         // tc.args is Record<string, any> from LangChain, cast needed for typed tool.invoke()
         const result = await submitTool.invoke(submitTc.args as any);
+        const msg = `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见`;
+        interrupt(msg);
         return {
           messages: [response, ...toolMessages, forceResponse],
           phase: "confirming",
-          interruptMessage: `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见`,
+          interruptMessage: msg,
           planMarkdown: typeof result === "string" ? result : JSON.stringify(result),
         };
       }
 
       // If LLM still won't call submit_plan, use text response as plan
+      const msg = `旅行计划已生成！请查看上方内容。`;
+      interrupt(msg);
       return {
         messages: [response, ...toolMessages, forceResponse],
         phase: "confirming",
-        interruptMessage: `旅行计划已生成！请查看上方内容。`,
+        interruptMessage: msg,
       };
     }
 

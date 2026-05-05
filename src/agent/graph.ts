@@ -1,4 +1,4 @@
-import { END, START, StateGraph, interrupt, MemorySaver } from "@langchain/langgraph";
+import { END, START, StateGraph, MemorySaver } from "@langchain/langgraph";
 import { AgentState, type AgentStateType } from "./state";
 import { infoCollector } from "./nodes/info-collector";
 import { callPlanAgent } from "./nodes/plan-agent";
@@ -31,46 +31,24 @@ function routeByPhase(
   }
 }
 
-// ── Handle interrupt: check interruptMessage and pause ──
-function handleInterrupt(state: AgentStateType): Partial<AgentStateType> {
-  if (state.interruptMessage) {
-    interrupt(state.interruptMessage);
-  }
-  return { interruptMessage: "" };
-}
-
 // ── Save: mark done ──
 function saveNode(): Partial<AgentStateType> {
   return { phase: "done" };
 }
 
-// ── After agent: route to interrupt or back to router ──
-function afterAgent(
-  state: AgentStateType,
-): "handle_interrupt" | typeof END {
-  if (state.interruptMessage) {
-    return "handle_interrupt";
-  }
-  return END;
-}
-
 // ── Build graph ──
 const workflow = new StateGraph(AgentState)
-  // 4 nodes
+  // 3 nodes
   .addNode("info_collector", infoCollector)
   .addNode("plan_agent", callPlanAgent)
-  .addNode("handle_interrupt", handleInterrupt)
   .addNode("save", saveNode)
 
   // START → router → agent
   .addConditionalEdges(START, routeByPhase)
 
-  // After each agent: interrupt if needed, else end
-  .addConditionalEdges("info_collector", afterAgent)
-  .addConditionalEdges("plan_agent", afterAgent)
-
-  // Interrupt → end (waits for user, resumes via checkpointer)
-  .addEdge("handle_interrupt", END)
+  // After each agent: end (interrupts handled via interrupt() in nodes)
+  .addEdge("info_collector", END)
+  .addEdge("plan_agent", END)
 
   // Save → end
   .addEdge("save", END);
