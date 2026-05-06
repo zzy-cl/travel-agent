@@ -67,13 +67,7 @@ function ThinkingBlock({ content, forceExpand }: { content: string; forceExpand?
         >
           <path d="M4 2.5l4 3.5-4 3.5" />
         </svg>
-        <span>
-          {forceExpand
-            ? "思考中..."
-            : expanded
-              ? "收起思考过程"
-              : "查看思考过程"}
-        </span>
+        <span>{forceExpand ? "思考中..." : expanded ? "收起思考过程" : "查看思考过程"}</span>
       </button>
       {expanded && <div className="thinking-content">{content}</div>}
     </div>
@@ -111,7 +105,7 @@ export function MessageBubble({ role, content, isStreaming }: MessageBubbleProps
                   {part.content}
                 </ReactMarkdown>
               </div>
-            )
+            ),
           )
         ) : (
           <div className="markdown-body">

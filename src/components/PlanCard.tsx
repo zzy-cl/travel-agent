@@ -22,11 +22,11 @@ export function PlanCard({ markdown, onSave, onRetry }: PlanCardProps) {
   if (collapsed) {
     return (
       <div className="plan-card plan-card-collapsed">
-        <button
-          className="plan-collapsed-bar"
-          onClick={() => setCollapsed(false)}
-        >
-          <span className="plan-header-icon" style={{ width: 24, height: 24, borderRadius: 8, fontSize: 12 }}>
+        <button className="plan-collapsed-bar" onClick={() => setCollapsed(false)}>
+          <span
+            className="plan-header-icon"
+            style={{ width: 24, height: 24, borderRadius: 8, fontSize: 12 }}
+          >
             &#128203;
           </span>
           <span className="plan-header-title">旅行计划</span>

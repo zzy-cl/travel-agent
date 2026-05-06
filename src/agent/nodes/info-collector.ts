@@ -2,30 +2,14 @@ import { AIMessage, ToolMessage } from "@langchain/core/messages";
 import { model } from "../../lib/llm";
 import type { AgentStateType } from "../state";
 import { infoSystemPrompt } from "../prompts/info";
-import { confirmInfo, updateCollectedInfo, loadPreferences } from "../tools";
+import { confirmInfo, updateCollectedInfo } from "../tools";
 import { collectedInfoSchema } from "../../schemas/collected-info";
-import { db } from "../../lib/db";
 
 const infoTools = [updateCollectedInfo, confirmInfo];
 const modelWithInfoTools = model.bindTools(infoTools);
 
-export async function infoCollector(
-  state: AgentStateType,
-): Promise<Partial<AgentStateType>> {
-  // Load user preferences if userId exists
-  let preferenceHint = "";
-  if (state.userId) {
-    try {
-      const prefs = await loadPreferences.invoke({ userId: state.userId });
-      if (typeof prefs === "string" && prefs !== "暂无已保存的偏好") {
-        preferenceHint = `\n\n用户历史偏好（参考）：${prefs}`;
-      }
-    } catch {
-      // Ignore preference loading errors
-    }
-  }
-
-  const messages = [{ role: "system", content: infoSystemPrompt + preferenceHint }, ...state.messages];
+export async function infoCollector(state: AgentStateType): Promise<Partial<AgentStateType>> {
+  const messages = [{ role: "system", content: infoSystemPrompt }, ...state.messages];
   const response = await modelWithInfoTools.invoke(messages);
 
   // No tool calls — LLM just responded with text, continue conversation
@@ -40,7 +24,7 @@ export async function infoCollector(
       toolMessages.push(
         new ToolMessage({
           content: JSON.stringify(tc.args),
-          tool_call_id: tc.id!,
+          tool_call_id: tc.id ?? "",
           name: "update_collected_info",
         }),
       );
@@ -48,7 +32,7 @@ export async function infoCollector(
       toolMessages.push(
         new ToolMessage({
           content: "信息收集完成",
-          tool_call_id: tc.id!,
+          tool_call_id: tc.id ?? "",
           name: "confirm_info",
         }),
       );
@@ -90,18 +74,6 @@ export async function infoCollector(
     ]
       .filter(Boolean)
       .join("\n");
-
-    // Save trip to DB (non-blocking)
-    if (state.userId) {
-      db.trip.create({
-        data: {
-          userId: state.userId,
-          planMarkdown: "",
-          collectedInfo: JSON.stringify(updatedInfo),
-          status: "planning",
-        },
-      }).catch(() => {}); // Non-critical: don't block on failure
-    }
 
     return {
       messages: [response, ...toolMessages],

@@ -19,41 +19,31 @@ export interface ChatPanelHandle {
 }
 
 interface ChatPanelProps {
+  restoreMessage?: string;
   onInfoUpdate: (info: Record<string, unknown>) => void;
   onPhaseUpdate: (phase: string) => void;
   onPlanUpdate: (markdown: string) => void;
   onTripStatusUpdate?: (status: string) => void;
 }
 
-const SUGGESTIONS = [
-  "🌸 我想去云南玩5天",
-  "🏝️ 厦门3天亲子游",
-  "🍜 成都美食之旅",
-  "🏔️ 川西自驾7天",
-];
+const SUGGESTIONS = ["🌸 我想去云南玩5天", "🏝️ 厦门3天亲子游", "🍜 成都美食之旅", "🏔️ 川西自驾7天"];
 
 const TOOL_LABELS: Record<string, string> = {
   get_weather: "查询目的地天气",
-  search_attractions: "搜索热门景点",
-  search_nearby: "搜索周边酒店和餐厅",
   web_search: "搜索最新旅游资讯",
   update_collected_info: "记录旅行信息",
   confirm_info: "确认信息完整",
   submit_plan: "正在生成旅行计划...",
-  get_traffic: "查询实时交通状况",
   get_attraction_detail: "查询景点详细信息",
-  optimize_route: "优化游览路线",
-  export_markdown: "导出 Markdown 文件",
-  export_json: "导出 JSON 文件",
-  save_preferences: "保存旅行偏好",
-  load_preferences: "加载旅行偏好",
 };
 
 export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function ChatPanel(
-  { onInfoUpdate, onPhaseUpdate, onPlanUpdate, onTripStatusUpdate },
+  { restoreMessage, onInfoUpdate, onPhaseUpdate, onPlanUpdate, onTripStatusUpdate },
   ref,
 ) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() =>
+    restoreMessage ? [{ role: "assistant", content: restoreMessage }] : [],
+  );
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [steps, setSteps] = useState<StepItem[]>([]);
@@ -87,169 +77,174 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
     abortControllerRef.current?.abort();
   }, []);
 
-  const handleSubmit = useCallback(async (text?: string) => {
-    const userMessage = (text || inputRef.current).trim();
-    if (!userMessage || isStreamingRef.current) return;
+  const handleSubmit = useCallback(
+    async (text?: string) => {
+      const userMessage = (text || inputRef.current).trim();
+      if (!userMessage || isStreamingRef.current) return;
 
-    setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
-    setIsStreaming(true);
-    setSteps([]);
+      setInput("");
+      setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+      setIsStreaming(true);
+      setSteps([]);
 
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage, threadId }),
-        signal: controller.signal,
-      });
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: userMessage, threadId }),
+          signal: controller.signal,
+        });
 
-      const reader = response.body?.getReader();
-      if (!reader) return;
+        const reader = response.body?.getReader();
+        if (!reader) return;
 
-      const decoder = new TextDecoder();
-      let assistantContent = "";
-      let allThinking = "";
+        const decoder = new TextDecoder();
+        let assistantContent = "";
+        let allThinking = "";
 
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+        setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
-      let buffer = "";
+        let buffer = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+          buffer += decoder.decode(value, { stream: true });
 
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
 
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
 
-            const updateMessage = () => {
-              const display = allThinking
-                ? `<think>${allThinking}</think>\n${assistantContent}`
-                : assistantContent;
-              setMessages((prev) => {
-                const updated = [...prev];
-                updated[updated.length - 1] = {
-                  role: "assistant",
-                  content: display,
-                };
-                return updated;
-              });
-            };
-
-            switch (data.type) {
-              case "thinking":
-                allThinking += data.content;
-                updateMessage();
-                break;
-
-              case "token":
-                assistantContent += data.content;
-                updateMessage();
-                break;
-
-              case "step": {
-                const toolNames: string[] = data.tools || [];
-                setSteps((prev) => {
-                  const next = [...prev];
-                  for (const name of toolNames) {
-                    const idx = next.findIndex((s) => s.id === name);
-                    if (idx >= 0) {
-                      next[idx] = { ...next[idx], status: "running" as const };
-                    } else {
-                      next.push({
-                        id: name,
-                        label: TOOL_LABELS[name] || name,
-                        status: "running" as const,
-                      });
-                    }
-                  }
-                  return next;
+              const updateMessage = () => {
+                const display = allThinking
+                  ? `<think>${allThinking}</think>\n${assistantContent}`
+                  : assistantContent;
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = {
+                    role: "assistant",
+                    content: display,
+                  };
+                  return updated;
                 });
-                break;
+              };
+
+              switch (data.type) {
+                case "thinking":
+                  allThinking += data.content;
+                  updateMessage();
+                  break;
+
+                case "token":
+                  assistantContent += data.content;
+                  updateMessage();
+                  break;
+
+                case "step": {
+                  const toolNames: string[] = data.tools || [];
+                  setSteps((prev) => {
+                    const next = [...prev];
+                    for (const name of toolNames) {
+                      const idx = next.findIndex((s) => s.id === name);
+                      if (idx >= 0) {
+                        next[idx] = { ...next[idx], status: "running" as const };
+                      } else {
+                        next.push({
+                          id: name,
+                          label: TOOL_LABELS[name] || name,
+                          status: "running" as const,
+                        });
+                      }
+                    }
+                    return next;
+                  });
+                  break;
+                }
+
+                case "step_done": {
+                  const toolName: string = data.tool;
+                  setSteps((prev) =>
+                    prev.map((s) => (s.id === toolName ? { ...s, status: "done" as const } : s)),
+                  );
+                  break;
+                }
+
+                case "info":
+                  onInfoUpdate(data.data);
+                  break;
+
+                case "phase":
+                  onPhaseUpdate(data.data);
+                  break;
+
+                case "plan":
+                  onPlanUpdate(data.markdown);
+                  break;
+
+                case "tripStatus":
+                  onTripStatusUpdate?.(data.data);
+                  break;
+
+                case "interrupt":
+                  assistantContent += `\n\n---\n\n*${data.message}*`;
+                  break;
+
+                case "error":
+                  assistantContent += `\n\n错误：${data.message}`;
+                  break;
               }
-
-              case "step_done": {
-                const toolName: string = data.tool;
-                setSteps((prev) =>
-                  prev.map((s) =>
-                    s.id === toolName ? { ...s, status: "done" as const } : s,
-                  ),
-                );
-                break;
-              }
-
-              case "info":
-                onInfoUpdate(data.data);
-                break;
-
-              case "phase":
-                onPhaseUpdate(data.data);
-                break;
-
-              case "plan":
-                onPlanUpdate(data.markdown);
-                break;
-
-              case "tripStatus":
-                onTripStatusUpdate?.(data.data);
-                break;
-
-              case "interrupt":
-                assistantContent += `\n\n---\n\n*${data.message}*`;
-                break;
-
-              case "error":
-                assistantContent += `\n\n错误：${data.message}`;
-                break;
+            } catch {
+              // JSON 解析失败 — 数据跨 chunk 被截断，静默跳过
             }
-          } catch {
-            // JSON 解析失败 — 数据跨 chunk 被截断，静默跳过
           }
         }
-      }
 
-      if (allThinking && assistantContent) {
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: "assistant",
-            content: `<think>${allThinking}</think>\n${assistantContent}`,
-          };
-          return updated;
-        });
+        if (allThinking && assistantContent) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              role: "assistant",
+              content: `<think>${allThinking}</think>\n${assistantContent}`,
+            };
+            return updated;
+          });
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          // 用户主动中断，保留已接收的内容
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `连接错误：${error instanceof Error ? error.message : "未知错误"}`,
+            },
+          ]);
+        }
+      } finally {
+        setIsStreaming(false);
+        abortControllerRef.current = null;
+        scrollToBottom();
       }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        // 用户主动中断，保留已接收的内容
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: `连接错误：${error instanceof Error ? error.message : "未知错误"}`,
-          },
-        ]);
-      }
-    } finally {
-      setIsStreaming(false);
-      abortControllerRef.current = null;
-      scrollToBottom();
-    }
-  }, [threadId, scrollToBottom, onInfoUpdate, onPhaseUpdate, onPlanUpdate, onTripStatusUpdate]);
+    },
+    [threadId, scrollToBottom, onInfoUpdate, onPhaseUpdate, onPlanUpdate, onTripStatusUpdate],
+  );
 
-  useImperativeHandle(ref, () => ({
-    sendMessage: (text: string) => handleSubmit(text),
-  }), [handleSubmit]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      sendMessage: (text: string) => handleSubmit(text),
+    }),
+    [handleSubmit],
+  );
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -260,7 +255,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
   const hasSteps = steps.length > 0;
 
   return (
-    <div className="flex flex-col h-full relative z-[1]">
+    <div className="relative z-[1] flex h-full flex-col">
       {isEmpty ? (
         <div className="empty-state">
           <div className="empty-icon-wrap">🌏</div>
@@ -270,11 +265,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
           </div>
           <div className="suggestion-chips">
             {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                className="suggestion-chip"
-                onClick={() => handleSubmit(s)}
-              >
+              <button key={s} className="suggestion-chip" onClick={() => handleSubmit(s)}>
                 {s}
               </button>
             ))}
@@ -287,11 +278,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
               key={i}
               role={msg.role}
               content={msg.content}
-              isStreaming={
-                isStreaming &&
-                i === messages.length - 1 &&
-                msg.role === "assistant"
-              }
+              isStreaming={isStreaming && i === messages.length - 1 && msg.role === "assistant"}
             />
           ))}
 
@@ -299,10 +286,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
           {hasSteps && (
             <div className="steps-progress">
               {steps.map((step) => (
-                <div
-                  key={step.id}
-                  className={`step-item ${step.status}`}
-                >
+                <div key={step.id} className={`step-item ${step.status}`}>
                   <span className="step-dot" />
                   <span className="step-label">{step.label}</span>
                   {step.status === "done" && (
@@ -319,9 +303,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
                       <path d="M2.5 7.5L5.5 10.5L11.5 3.5" />
                     </svg>
                   )}
-                  {step.status === "running" && (
-                    <span className="step-spinner" />
-                  )}
+                  {step.status === "running" && <span className="step-spinner" />}
                 </div>
               ))}
             </div>
@@ -339,19 +321,11 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
           className="chat-input flex-1"
         />
         {isStreaming ? (
-          <button
-            type="button"
-            onClick={handleStop}
-            className="stop-btn"
-          >
+          <button type="button" onClick={handleStop} className="stop-btn">
             停止
           </button>
         ) : (
-          <button
-            type="submit"
-            disabled={!input.trim()}
-            className="send-btn"
-          >
+          <button type="submit" disabled={!input.trim()} className="send-btn">
             发送
           </button>
         )}

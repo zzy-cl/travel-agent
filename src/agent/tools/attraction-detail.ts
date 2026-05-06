@@ -11,10 +11,7 @@ const attractionDetailSchema = z.object({
     .describe("需要查询的信息字段，不填则返回全部"),
 });
 
-async function fetchAttractionDetail(
-  name: string,
-  fields?: string[],
-): Promise<string> {
+async function fetchAttractionDetail(name: string, fields?: string[]): Promise<string> {
   const cacheKey = `attraction:${name}:${(fields || []).sort().join(",")}`;
   const cached = cache.get<string>(cacheKey);
   if (cached) return cached;
@@ -33,7 +30,7 @@ async function fetchAttractionDetail(
     const label = fieldDescriptions[field] || field;
     try {
       const searchQuery = `${name} ${label}`;
-      const searxngUrl = process.env.SEARXNG_URL || "http://localhost:8080";
+      const searxngUrl = process.env.SEARXNG_BASE_URL || "https://searxng.zhaozeyu.top";
       const data = await withRetry(async () => {
         const res = await fetchWithTimeout(
           `${searxngUrl}/search?q=${encodeURIComponent(searchQuery)}&format=json&categories=general&language=zh`,

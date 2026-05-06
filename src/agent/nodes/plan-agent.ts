@@ -5,34 +5,78 @@ import { buildPlanSystemPrompt } from "../prompts/plan";
 import { planTools } from "../tools";
 const modelWithPlanTools = model.bindTools(planTools);
 
-export async function callPlanAgent(
-  state: AgentStateType,
-): Promise<Partial<AgentStateType>> {
+export async function callPlanAgent(state: AgentStateType): Promise<Partial<AgentStateType>> {
   const systemPrompt = buildPlanSystemPrompt(state.collectedInfo, state.tripStatus);
   const messages = [{ role: "system", content: systemPrompt }, ...state.messages];
 
   let response = await modelWithPlanTools.invoke(messages);
 
-  // Tool call loop with dead-loop protection (Bug #2 fix)
+  // Tool call loop with dead-loop protection and data completeness check
   let rounds = 0;
   const MAX_ROUNDS = 8;
+  const calledTools = new Set<string>();
 
-  while (
-    AIMessage.isInstance(response) &&
-    (response.tool_calls?.length ?? 0) > 0
-  ) {
+  while (AIMessage.isInstance(response) && (response.tool_calls?.length ?? 0) > 0) {
     rounds++;
     const allMessages = [...messages, response];
 
-    // tool_calls is guaranteed non-null by while condition
     const toolCalls = response.tool_calls!;
-    const hasSubmitPlan = toolCalls.some(
-      (tc) => tc.name === "submit_plan",
-    );
+    const hasSubmitPlan = toolCalls.some((tc) => tc.name === "submit_plan");
+
+    // Soft constraint: if LLM tries to submit_plan without searching first, execute other tools first
+    if (hasSubmitPlan && rounds <= 2) {
+      const hasSearched = calledTools.has("web_search") || calledTools.has("get_attraction_detail");
+      const hasWeather = calledTools.has("get_weather");
+      if (!hasSearched || !hasWeather) {
+        const missing = [];
+        if (!hasWeather) missing.push("get_weather 查询天气");
+        if (!hasSearched) missing.push("web_search 或 get_attraction_detail 搜索景点信息");
+
+        // Execute non-submit tools from this batch first
+        const nonSubmitCalls = toolCalls.filter((tc) => tc.name !== "submit_plan");
+        const preToolMessages: ToolMessage[] = [];
+        for (const tc of nonSubmitCalls) {
+          calledTools.add(tc.name);
+          const tool = planTools.find((t) => t.name === tc.name);
+          if (tool) {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LangChain tool args
+              const result = await tool.invoke(tc.args as any);
+              preToolMessages.push(
+                new ToolMessage({
+                  content: typeof result === "string" ? result : JSON.stringify(result),
+                  tool_call_id: tc.id ?? "",
+                  name: tc.name,
+                }),
+              );
+            } catch {
+              preToolMessages.push(
+                new ToolMessage({
+                  content: `工具 ${tc.name} 执行失败`,
+                  tool_call_id: tc.id ?? "",
+                  name: tc.name,
+                }),
+              );
+            }
+          }
+        }
+
+        // Inject hint and let LLM decide (soft constraint)
+        response = await modelWithPlanTools.invoke([
+          ...allMessages,
+          ...preToolMessages,
+          new HumanMessage({
+            content: `建议先用 ${missing.join("、")} 获取实时数据，再提交计划。如果你已有足够信息，可以直接调用 submit_plan。`,
+          }),
+        ]);
+        continue;
+      }
+    }
 
     // Execute all tool calls
     const toolMessages: ToolMessage[] = [];
     for (const tc of toolCalls) {
+      calledTools.add(tc.name); // Track called tools for soft constraint
       const tool = planTools.find((t) => t.name === tc.name);
       if (tool) {
         try {
@@ -41,7 +85,7 @@ export async function callPlanAgent(
           toolMessages.push(
             new ToolMessage({
               content: typeof result === "string" ? result : JSON.stringify(result),
-              tool_call_id: tc.id!,
+              tool_call_id: tc.id ?? "",
               name: tc.name,
             }),
           );
@@ -49,7 +93,7 @@ export async function callPlanAgent(
           toolMessages.push(
             new ToolMessage({
               content: `工具 ${tc.name} 执行失败`,
-              tool_call_id: tc.id!,
+              tool_call_id: tc.id ?? "",
               name: tc.name,
             }),
           );
@@ -58,7 +102,7 @@ export async function callPlanAgent(
         toolMessages.push(
           new ToolMessage({
             content: `未知工具: ${tc.name}`,
-            tool_call_id: tc.id!,
+            tool_call_id: tc.id ?? "",
             name: tc.name,
           }),
         );
@@ -67,15 +111,18 @@ export async function callPlanAgent(
 
     // submit_plan was called — plan is ready
     if (hasSubmitPlan) {
-      const planMarkdown = toolMessages.find(
-        (m) => m.name === "submit_plan",
-      )?.content;
+      const planMarkdown = toolMessages.find((m) => m.name === "submit_plan")?.content;
       const msg = `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见，如"第二天换成海边景点"`;
       return {
         messages: [response, ...toolMessages],
         phase: "confirming",
         interruptMessage: msg,
-        ...(planMarkdown ? { planMarkdown: String(planMarkdown) } : {}),
+        ...(planMarkdown
+          ? {
+              planMarkdown:
+                typeof planMarkdown === "string" ? planMarkdown : JSON.stringify(planMarkdown),
+            }
+          : {}),
       };
     }
 
@@ -94,9 +141,7 @@ export async function callPlanAgent(
         AIMessage.isInstance(forceResponse) &&
         forceResponse.tool_calls?.some((tc) => tc.name === "submit_plan")
       ) {
-        const submitTc = forceResponse.tool_calls?.find(
-          (tc) => tc.name === "submit_plan",
-        );
+        const submitTc = forceResponse.tool_calls?.find((tc) => tc.name === "submit_plan");
         const submitTool = planTools.find((t) => t.name === "submit_plan");
         if (submitTc && submitTool) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LangChain tool args
@@ -113,14 +158,14 @@ export async function callPlanAgent(
 
       // If LLM still won't call submit_plan, use text response as plan
       const fallbackContent = AIMessage.isInstance(forceResponse)
-        ? (typeof forceResponse.content === "string"
+        ? typeof forceResponse.content === "string"
+          ? forceResponse.content
+          : Array.isArray(forceResponse.content)
             ? forceResponse.content
-            : Array.isArray(forceResponse.content)
-              ? forceResponse.content
-                  .filter((b): b is { type: "text"; text: string } => b.type === "text")
-                  .map((b) => b.text)
-                  .join("")
-              : "")
+                .filter((b): b is { type: "text"; text: string } => b.type === "text")
+                .map((b) => b.text)
+                .join("")
+            : ""
         : "";
       const msg = fallbackContent
         ? `旅行计划已生成！请查看上方内容。`
@@ -134,10 +179,7 @@ export async function callPlanAgent(
     }
 
     // Continue loop — get next response from LLM
-    response = await modelWithPlanTools.invoke([
-      ...allMessages,
-      ...toolMessages,
-    ]);
+    response = await modelWithPlanTools.invoke([...allMessages, ...toolMessages]);
   }
 
   // LLM responded without tool calls — shouldn't normally happen in planning phase

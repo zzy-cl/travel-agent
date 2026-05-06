@@ -38,7 +38,9 @@ export function InfoSidebar({ collectedInfo, phase }: InfoSidebarProps) {
 
             if (isArray) {
               const arr = collectedInfo[key];
-              const items = Array.isArray(arr) ? arr.filter((v): v is string => typeof v === "string") : [];
+              const items = Array.isArray(arr)
+                ? arr.filter((v): v is string => typeof v === "string")
+                : [];
               hasValue = items.length > 0;
               value = hasValue ? items.join("、") : "待收集";
             } else {
@@ -51,16 +53,20 @@ export function InfoSidebar({ collectedInfo, phase }: InfoSidebarProps) {
               <div key={key} className="field-row">
                 <div className={`field-check ${hasValue ? "done" : "waiting"}`}>
                   {hasValue && (
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                    >
                       <path d="M3.5 8.5l3 3 6-6" />
                     </svg>
                   )}
                 </div>
                 <div className="field-info">
                   <div className="field-label">{label}</div>
-                  <div className={`field-value ${hasValue ? "" : "pending-text"}`}>
-                    {value}
-                  </div>
+                  <div className={`field-value ${hasValue ? "" : "pending-text"}`}>{value}</div>
                 </div>
               </div>
             );

@@ -12,8 +12,7 @@ dotenv.config({
 import { ChatAnthropic } from "@langchain/anthropic";
 import { logCall, calculateCost } from "./logger";
 
-const baseURL =
-  process.env.ANTHROPIC_BASE_URL || "https://api.deepseek.com/anthropic";
+const baseURL = process.env.ANTHROPIC_BASE_URL || "https://api.deepseek.com/anthropic";
 
 export const model = new ChatAnthropic({
   model: process.env.LLM_MODEL || "deepseek-v4-pro",

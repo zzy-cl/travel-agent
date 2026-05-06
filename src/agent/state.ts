@@ -3,13 +3,7 @@ import { Annotation } from "@langchain/langgraph";
 import { BaseMessage } from "@langchain/core/messages";
 import type { CollectedInfo } from "../schemas/collected-info";
 
-export type Phase =
-  | "info_gathering"
-  | "planning"
-  | "refinement"
-  | "confirming"
-  | "exporting"
-  | "done";
+export type Phase = "info_gathering" | "planning" | "refinement" | "confirming" | "done";
 
 export type TripStatus = "planning" | "ongoing" | "completed";
 

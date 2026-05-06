@@ -30,7 +30,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files
 .env*
 
 # vercel
@@ -40,10 +40,16 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# generated
 /src/generated/prisma
 
-# prisma
-prisma/dev.db
-prisma/dev.db-journal
-dev.db
-dev.db-journal
+# database (legacy)
+*.db
+*.db-journal
+
+# docs (local design docs, not for deployment)
+/docs
+
+# Claude Code / Superpowers local config
+/.claude
+/.superpowers

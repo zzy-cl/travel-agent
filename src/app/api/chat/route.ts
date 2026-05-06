@@ -52,9 +52,7 @@ function isTextBlock(block: unknown): block is TextBlock {
   );
 }
 
-function extractIncremental(
-  content: unknown,
-): { thinking: string; text: string } {
+function extractIncremental(content: unknown): { thinking: string; text: string } {
   let thinking = "";
   let text = "";
   if (Array.isArray(content)) {
@@ -68,19 +66,19 @@ function extractIncremental(
   return { thinking, text };
 }
 
-function validateBody(body: unknown): {
-  message: string;
-  threadId: string;
-  userId?: string;
-  sessionId?: string;
-} | { error: string } {
+function validateBody(body: unknown):
+  | {
+      message: string;
+      threadId: string;
+      userId?: string;
+      sessionId?: string;
+    }
+  | { error: string } {
   if (!body || typeof body !== "object") return { error: "请求体为空" };
   const { message, threadId, userId, sessionId } = body as Record<string, unknown>;
-  if (typeof message !== "string" || !message.trim())
-    return { error: "message 不能为空" };
+  if (typeof message !== "string" || !message.trim()) return { error: "message 不能为空" };
   if (message.length > 5000) return { error: "message 超过 5000 字符限制" };
-  if (typeof threadId !== "string" || !threadId.trim())
-    return { error: "threadId 不能为空" };
+  if (typeof threadId !== "string" || !threadId.trim()) return { error: "threadId 不能为空" };
   const result: { message: string; threadId: string; userId?: string; sessionId?: string } = {
     message: message.trim(),
     threadId: threadId.trim(),
@@ -107,9 +105,7 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: SSEEvent) => {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(data)}\n\n`),
-        );
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
       // Bug #5 fix: track sent tool names per node, reset on node transition
@@ -123,10 +119,7 @@ export async function POST(req: NextRequest) {
         if (userId) streamInput.userId = userId;
         if (sessionId) streamInput.sessionId = sessionId;
 
-        const eventStream = await travelAgent.stream(
-          streamInput,
-          config,
-        );
+        const eventStream = await travelAgent.stream(streamInput, config);
 
         for await (const rawChunk of eventStream) {
           const chunk = rawChunk as [string, unknown];
@@ -135,10 +128,7 @@ export async function POST(req: NextRequest) {
 
           // ── messages mode: token-level streaming ──
           if (mode === "messages") {
-            const [msgChunk, meta] = payload as [
-              AIMessageChunk,
-              { langgraph_node?: string },
-            ];
+            const [msgChunk, meta] = payload as [AIMessageChunk, { langgraph_node?: string }];
 
             // Reset tool step tracker on node transition (Bug #5 fix)
             if (meta.langgraph_node && meta.langgraph_node !== currentNode) {
@@ -193,6 +183,37 @@ export async function POST(req: NextRequest) {
               }
               if (pa.planMarkdown && typeof pa.planMarkdown === "string") {
                 send({ type: "plan", markdown: pa.planMarkdown });
+              }
+              // Extract AIMessage text when LLM responds without tool calls
+              // (e.g., follow-up questions in confirming phase)
+              // Only emit AIMessage content — skip ToolMessage to avoid emitting raw tool output
+              if (pa.messages && Array.isArray(pa.messages)) {
+                for (const msg of pa.messages) {
+                  if (
+                    msg &&
+                    typeof msg === "object" &&
+                    "content" in msg &&
+                    !("tool_call_id" in msg) // skip ToolMessage
+                  ) {
+                    const content = msg.content;
+                    if (typeof content === "string" && content.length > 0) {
+                      send({ type: "token", content });
+                    } else if (Array.isArray(content)) {
+                      for (const block of content) {
+                        if (
+                          block &&
+                          typeof block === "object" &&
+                          "type" in block &&
+                          block.type === "text" &&
+                          "text" in block &&
+                          typeof block.text === "string"
+                        ) {
+                          send({ type: "token", content: block.text });
+                        }
+                      }
+                    }
+                  }
+                }
               }
               // Mark all pending tool steps as done
               for (const name of sentToolSteps) {

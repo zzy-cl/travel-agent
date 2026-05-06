@@ -3,8 +3,7 @@ import { tool } from "@langchain/core/tools";
 import { withRetry, fetchWithTimeout } from "../../lib/fetch-utils";
 import { searchCache } from "../../lib/cache";
 
-const BASE_URL =
-  process.env.SEARXNG_BASE_URL || "https://searxng.zhaozeyu.top";
+const BASE_URL = process.env.SEARXNG_BASE_URL || "https://searxng.zhaozeyu.top";
 
 export const webSearch = tool(
   async ({ query, count = 10 }: { query: string; count?: number }) => {
@@ -20,9 +19,7 @@ export const webSearch = tool(
 
     try {
       const data = await withRetry(async () => {
-        const res = await fetchWithTimeout(
-          `${BASE_URL}/search?${params.toString()}`,
-        );
+        const res = await fetchWithTimeout(`${BASE_URL}/search?${params.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return (await res.json()) as {
           results: Array<{
@@ -37,10 +34,7 @@ export const webSearch = tool(
 
       const result = data.results
         .slice(0, count)
-        .map(
-          (r, i) =>
-            `${i + 1}. **${r.title}**\n   URL: ${r.url}\n   摘要: ${r.content || "无"}`,
-        )
+        .map((r, i) => `${i + 1}. **${r.title}**\n   URL: ${r.url}\n   摘要: ${r.content || "无"}`)
         .join("\n\n");
 
       searchCache.set(cacheKey, result);

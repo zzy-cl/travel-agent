@@ -92,7 +92,6 @@ class MemoryCache {
 
 export const cache = new MemoryCache();
 
-// Legacy LRU caches (used by amap.ts, search.ts, weather.ts)
+// LRU caches for external API calls
 export const searchCache = new LRUCache<string, string>(50, 30);
 export const weatherCache = new LRUCache<string, string>(100, 15);
-export const amapCache = new LRUCache<string, string>(50, 60);
