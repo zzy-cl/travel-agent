@@ -3,6 +3,11 @@ import { AIMessageChunk, HumanMessage } from "@langchain/core/messages";
 import { travelAgent } from "@/agent/graph";
 import { isGraphInterrupt } from "@langchain/langgraph";
 
+const ALLOWED_ORIGINS = new Set([
+  "http://localhost:3000",
+  // Add your Vercel domain: "https://your-app.vercel.app"
+]);
+
 // ── SSE Event Types ──
 
 type SSEEvent =
@@ -66,6 +71,21 @@ function extractIncremental(content: unknown): { thinking: string; text: string 
   return { thinking, text };
 }
 
+// Basic prompt injection patterns (case-insensitive)
+const INJECTION_PATTERNS = [
+  /ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|rules?)/i,
+  /忽略(之前|以上|所有)(的)?(指令|提示|规则|要求)/i,
+  /you\s+are\s+now\s+(a|an|the)/i,
+  /你现在是/i,
+  /output\s+(your|the|all)\s+(system\s+)?(prompt|instructions?|rules?)/i,
+  /输出(你的|所有|系统)(提示词|指令|规则)/i,
+  /forget\s+(all\s+)?(previous|prior|your)\s+(instructions?|rules?)/i,
+  /忘记(之前|所有|你的)(指令|规则)/i,
+  /system\s*:\s*/i,
+  /\[INST\]/i,
+  /<\/?(system|user|assistant)>/i,
+];
+
 function validateBody(body: unknown):
   | {
       message: string;
@@ -78,6 +98,14 @@ function validateBody(body: unknown):
   const { message, threadId, userId, sessionId } = body as Record<string, unknown>;
   if (typeof message !== "string" || !message.trim()) return { error: "message 不能为空" };
   if (message.length > 5000) return { error: "message 超过 5000 字符限制" };
+
+  // Basic prompt injection detection
+  for (const pattern of INJECTION_PATTERNS) {
+    if (pattern.test(message)) {
+      return { error: "消息内容包含不允许的指令，请重新输入旅行相关问题" };
+    }
+  }
+
   if (typeof threadId !== "string" || !threadId.trim()) return { error: "threadId 不能为空" };
   const result: { message: string; threadId: string; userId?: string; sessionId?: string } = {
     message: message.trim(),
@@ -234,9 +262,12 @@ export async function POST(req: NextRequest) {
         if (isGraphInterrupt(error)) {
           send({ type: "interrupt", message: "等待用户确认" });
         } else {
+          // Log detailed error server-side
+          console.error("[chat] Error:", error);
+          // Send generic message to client
           send({
             type: "error",
-            message: error instanceof Error ? error.message : "未知错误",
+            message: "服务暂时出现问题，请稍后重试",
           });
         }
       } finally {
@@ -245,11 +276,16 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+  const origin = req.headers.get("origin");
+  const corsHeaders: Record<string, string> = {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "X-Content-Type-Options": "nosniff",
+  };
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    corsHeaders["Access-Control-Allow-Origin"] = origin;
+  }
+
+  return new Response(stream, { headers: corsHeaders });
 }

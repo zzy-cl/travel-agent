@@ -1,4 +1,5 @@
 import { END, START, StateGraph, MemorySaver } from "@langchain/langgraph";
+import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { AgentState, type AgentStateType } from "./state";
 import { infoCollector } from "./nodes/info-collector";
 import { callPlanAgent } from "./nodes/plan-agent";
@@ -57,5 +58,32 @@ const workflow = new StateGraph(AgentState)
   .addEdge("plan_agent", END)
   .addEdge("save", END);
 
-const checkpointer = new MemorySaver();
+/**
+ * Creates the checkpointer for LangGraph state persistence.
+ *
+ * Default: MemorySaver (in-memory, state lost on server restart).
+ * For Vercel/serverless production, install and configure a persistent backend:
+ *
+ *   # Option 1: PostgreSQL (Neon, Supabase, etc.)
+ *   npm install @langchain/langgraph-checkpoint-postgres
+ *   CHECKPOINTER_BACKEND=postgres DATABASE_URL=postgresql://...
+ *
+ *   # Option 2: Redis (Upstash, etc.)
+ *   npm install @langchain/langgraph-checkpoint-redis
+ *   CHECKPOINTER_BACKEND=redis REDIS_URL=redis://...
+ *
+ * Then replace this function with the appropriate saver.
+ */
+function createCheckpointer(): BaseCheckpointSaver {
+  // Default: in-memory — fine for dev, lost on cold starts in production
+  if (process.env.NODE_ENV === "production") {
+    console.warn(
+      "[travel-agent] Using MemorySaver in production — conversation state will be lost on cold starts. " +
+        "See src/agent/graph.ts for persistent checkpointer setup.",
+    );
+  }
+  return new MemorySaver();
+}
+
+const checkpointer = createCheckpointer();
 export const travelAgent = workflow.compile({ checkpointer });

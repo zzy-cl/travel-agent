@@ -75,6 +75,7 @@ body {
     radial-gradient(ellipse 600px 500px at 60% 80%, rgba(180, 120, 255, 0.3), transparent),
     radial-gradient(ellipse 500px 400px at 25% 75%, rgba(100, 220, 180, 0.25), transparent),
     radial-gradient(ellipse 800px 500px at 50% 40%, rgba(255, 200, 150, 0.2), transparent);
+  will-change: transform;
   animation: bgDrift 25s ease-in-out infinite alternate;
 }
 
@@ -86,8 +87,23 @@ body {
     radial-gradient(ellipse 600px 500px at 70% 30%, rgba(0, 150, 255, 0.25), transparent),
     radial-gradient(ellipse 500px 450px at 30% 60%, rgba(255, 120, 180, 0.2), transparent),
     radial-gradient(ellipse 700px 400px at 85% 70%, rgba(140, 200, 100, 0.18), transparent);
+  will-change: transform;
   animation: bgDrift2 30s ease-in-out infinite alternate;
   mix-blend-mode: overlay;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-canvas::before,
+  .bg-canvas::after {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @keyframes bgDrift {
@@ -213,8 +229,8 @@ body {
 
 .msg-user .bubble {
   background: rgba(0, 122, 255, 0.75);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   color: white;
   border-bottom-right-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.25);
@@ -233,8 +249,8 @@ body {
 
 .msg-ai .bubble {
   background: rgba(255, 255, 255, 0.32);
-  backdrop-filter: blur(50px) saturate(200%);
-  -webkit-backdrop-filter: blur(50px) saturate(200%);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
   color: var(--text-primary);
   border-bottom-left-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.4);
@@ -533,6 +549,10 @@ body {
   background: rgba(0, 122, 255, 0.08);
   transform: translateY(-1px);
   box-shadow: 0 4px 20px rgba(0, 122, 255, 0.1);
+}
+.suggestion-chip:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 2px;
 }
 
 @keyframes iconShimmer {
@@ -1023,11 +1043,13 @@ body {
 @keyframes thinkExpand {
   from {
     opacity: 0;
-    max-height: 0;
+    transform: scaleY(0.8);
+    transform-origin: top;
   }
   to {
     opacity: 1;
-    max-height: 1000px;
+    transform: scaleY(1);
+    transform-origin: top;
   }
 }
 

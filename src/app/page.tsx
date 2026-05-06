@@ -15,11 +15,17 @@ interface SessionData {
   tripStatus: string;
 }
 
+// Cache snapshot to avoid returning a new object on every call (prevents infinite loop)
+let cachedRaw: string | null = null;
+let cachedSession: SessionData | null = null;
+
 function getSession(): SessionData | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as SessionData;
+    if (raw === cachedRaw) return cachedSession;
+    cachedRaw = raw;
+    cachedSession = raw ? (JSON.parse(raw) as SessionData) : null;
+    return cachedSession;
   } catch {
     return null;
   }
@@ -89,19 +95,31 @@ export default function Home() {
     return undefined;
   })();
 
-  // Persist to localStorage
+  // Persist to localStorage (debounced)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        SESSION_KEY,
-        JSON.stringify({ collectedInfo, phase, planMarkdown, tripStatus }),
-      );
-    } catch {
-      // localStorage full or unavailable
-    }
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          SESSION_KEY,
+          JSON.stringify({ collectedInfo, phase, planMarkdown, tripStatus }),
+        );
+      } catch {
+        // localStorage full or unavailable
+      }
+    }, 300);
+    return () => clearTimeout(saveTimerRef.current);
   }, [collectedInfo, phase, planMarkdown, tripStatus]);
 
   const chatPanelRef = useRef<ChatPanelHandle>(null);
+
+  const handleInfoUpdate = useCallback(
+    (info: Record<string, unknown>) => setCollectedInfo((prev) => ({ ...prev, ...info })),
+    [],
+  );
+  const handlePhaseUpdate = useCallback((p: string) => setPhase(p), []);
+  const handlePlanUpdate = useCallback((md: string | null) => setPlanMarkdown(md), []);
 
   const handleTripStatusUpdate = useCallback(
     (s: string) => setTripStatus(s as "planning" | "ongoing" | "completed"),
@@ -117,6 +135,34 @@ export default function Home() {
     if (e.changedTouches[0].clientX - touchStartX.current > 60) {
       setSidebarOpen(false);
     }
+  }, []);
+
+  // Escape key to close sidebar + auto-focus close button
+  const sidebarCloseRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+    document.addEventListener("keydown", handleEscape);
+    sidebarCloseRef.current?.focus();
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [sidebarOpen]);
+
+  // PlanCard callbacks
+  const handlePlanSave = useCallback(() => {
+    const blob = new Blob([planMarkdown ?? ""], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `travel-plan-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [planMarkdown]);
+  const handlePlanRetry = useCallback(() => {
+    setPlanMarkdown(null);
+    setPhase("planning");
+    chatPanelRef.current?.sendMessage("帮我重新规划旅行计划");
   }, []);
 
   return (
@@ -185,9 +231,9 @@ export default function Home() {
             <ChatPanel
               ref={chatPanelRef}
               restoreMessage={restoreMessage}
-              onInfoUpdate={(info) => setCollectedInfo((prev) => ({ ...prev, ...info }))}
-              onPhaseUpdate={setPhase}
-              onPlanUpdate={setPlanMarkdown}
+              onInfoUpdate={handleInfoUpdate}
+              onPhaseUpdate={handlePhaseUpdate}
+              onPlanUpdate={handlePlanUpdate}
               onTripStatusUpdate={handleTripStatusUpdate}
             />
           </div>
@@ -210,9 +256,13 @@ export default function Home() {
         <div
           className="absolute inset-0 bg-black/20 backdrop-blur-[4px]"
           onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
         />
         <div
-          className={`absolute top-0 right-0 bottom-0 flex w-[300px] max-w-[85vw] flex-col overflow-hidden rounded-l-[var(--radius-xl)] border border-r-0 border-[var(--glass-edge)] bg-[var(--glass-h)] backdrop-blur-[blur(80px)_saturate(220%)] transition-transform duration-[400ms] ease-[cubic-bezier(0.32,0.72,0,1)] ${
+          role="dialog"
+          aria-modal="true"
+          aria-label="已收集信息"
+          className={`absolute top-0 right-0 bottom-0 flex w-[300px] max-w-[85vw] flex-col overflow-hidden rounded-l-[var(--radius-xl)] border border-r-0 border-[var(--glass-edge)] bg-[var(--glass-h)] saturate-[220%] backdrop-blur-[80px] transition-transform duration-[400ms] ease-[cubic-bezier(0.32,0.72,0,1)] ${
             sidebarOpen ? "translate-x-0" : "translate-x-full"
           }`}
         >
@@ -222,8 +272,10 @@ export default function Home() {
           <div className="relative z-[1] flex items-center justify-between border-b border-white/15 px-5 py-4">
             <span className="text-[15px] font-bold text-[var(--text-primary)]">已收集信息</span>
             <button
+              ref={sidebarCloseRef}
               className="flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border border-white/30 bg-white/12 text-lg text-[var(--text-secondary)]"
               onClick={() => setSidebarOpen(false)}
+              aria-label="关闭侧边栏"
             >
               &times;
             </button>
@@ -235,23 +287,7 @@ export default function Home() {
       </div>
 
       {planMarkdown && (
-        <PlanCard
-          markdown={planMarkdown}
-          onSave={() => {
-            const blob = new Blob([planMarkdown], { type: "text/markdown" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `travel-plan-${new Date().toISOString().slice(0, 10)}.md`;
-            a.click();
-            URL.revokeObjectURL(url);
-          }}
-          onRetry={() => {
-            setPlanMarkdown(null);
-            setPhase("planning");
-            chatPanelRef.current?.sendMessage("帮我重新规划旅行计划");
-          }}
-        />
+        <PlanCard markdown={planMarkdown} onSave={handlePlanSave} onRetry={handlePlanRetry} />
       )}
     </>
   );

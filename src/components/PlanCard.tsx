@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -16,7 +16,7 @@ interface PlanCardProps {
   onRetry?: () => void;
 }
 
-export function PlanCard({ markdown, onSave, onRetry }: PlanCardProps) {
+export const PlanCard = memo(function PlanCard({ markdown, onSave, onRetry }: PlanCardProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   if (collapsed) {
@@ -66,4 +66,4 @@ export function PlanCard({ markdown, onSave, onRetry }: PlanCardProps) {
       </div>
     </div>
   );
-}
+});

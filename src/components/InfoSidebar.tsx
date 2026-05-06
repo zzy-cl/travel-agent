@@ -1,5 +1,7 @@
 "use client";
 
+import { memo } from "react";
+
 interface InfoSidebarProps {
   collectedInfo: Record<string, unknown>;
   phase: string;
@@ -23,7 +25,7 @@ const phaseLabels: Record<string, { text: string; cls: string }> = {
   done: { text: "已完成", cls: "phase-done" },
 };
 
-export function InfoSidebar({ collectedInfo, phase }: InfoSidebarProps) {
+export const InfoSidebar = memo(function InfoSidebar({ collectedInfo, phase }: InfoSidebarProps) {
   const phaseInfo = phaseLabels[phase] || phaseLabels.info_gathering;
 
   return (
@@ -86,4 +88,4 @@ export function InfoSidebar({ collectedInfo, phase }: InfoSidebarProps) {
       </div>
     </div>
   );
-}
+});
