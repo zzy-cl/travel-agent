@@ -3,6 +3,11 @@
 import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from "react";
 import { MessageBubble } from "./MessageBubble";
 
+interface InterruptData {
+  message: string;
+  type: "info_confirm";
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -19,7 +24,6 @@ export interface ChatPanelHandle {
 }
 
 interface ChatPanelProps {
-  restoreMessage?: string;
   onInfoUpdate: (info: Record<string, unknown>) => void;
   onPhaseUpdate: (phase: string) => void;
   onPlanUpdate: (markdown: string) => void;
@@ -31,6 +35,9 @@ const SUGGESTIONS = ["🌸 我想去云南玩5天", "🏝️ 厦门3天亲子游
 const TOOL_LABELS: Record<string, string> = {
   get_weather: "查询目的地天气",
   web_search: "搜索最新旅游资讯",
+  fetch_search: "获取网页详细内容",
+  search_attractions: "搜索城市景点",
+  search_nearby: "搜索周边酒店餐厅",
   update_collected_info: "记录旅行信息",
   confirm_info: "确认信息完整",
   submit_plan: "正在生成旅行计划...",
@@ -38,26 +45,15 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function ChatPanel(
-  { restoreMessage, onInfoUpdate, onPhaseUpdate, onPlanUpdate, onTripStatusUpdate },
+  { onInfoUpdate, onPhaseUpdate, onPlanUpdate, onTripStatusUpdate },
   ref,
 ) {
-  const [messages, setMessages] = useState<Message[]>(() =>
-    restoreMessage ? [{ role: "assistant", content: restoreMessage }] : [],
-  );
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [steps, setSteps] = useState<StepItem[]>([]);
-  const [threadId] = useState(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("travel-thread-id");
-      if (stored) return stored;
-      const id = crypto.randomUUID();
-      localStorage.setItem("travel-thread-id", id);
-      return id;
-    }
-    // SSR fallback: simple random ID (replaced on client hydration)
-    return `ssr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
-  });
+  const [interruptData, setInterruptData] = useState<InterruptData | null>(null);
+  const [threadId] = useState(() => crypto.randomUUID());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const inputRef = useRef(input);
@@ -71,7 +67,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, steps, scrollToBottom]);
+  }, [messages, steps, interruptData, scrollToBottom]);
 
   const handleStop = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -80,7 +76,14 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
   const handleSubmit = useCallback(
     async (text?: string) => {
       const userMessage = (text || inputRef.current).trim();
-      if (!userMessage || isStreamingRef.current) return;
+      if (!userMessage) return;
+      if (isStreamingRef.current && !interruptData) return;
+
+      // Abort previous stream if confirming during streaming
+      if (isStreamingRef.current) {
+        abortControllerRef.current?.abort();
+      }
+      setInterruptData(null);
 
       setInput("");
       setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
@@ -111,7 +114,25 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            // Flush remaining buffer — the last SSE event may not end with \n
+            if (buffer.trim()) {
+              const remaining = buffer.split("\n");
+              for (const line of remaining) {
+                if (!line.startsWith("data: ")) continue;
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  if (data.type === "info") onInfoUpdate(data.data);
+                  else if (data.type === "phase") onPhaseUpdate(data.data);
+                  else if (data.type === "plan") onPlanUpdate(data.markdown);
+                  else if (data.type === "tripStatus") onTripStatusUpdate?.(data.data);
+                } catch {
+                  // JSON parse failure on final flush — skip
+                }
+              }
+            }
+            break;
+          }
 
           buffer += decoder.decode(value, { stream: true });
 
@@ -145,6 +166,11 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
 
                 case "token":
                   assistantContent += data.content;
+                  updateMessage();
+                  break;
+
+                case "replace":
+                  assistantContent = data.content;
                   updateMessage();
                   break;
 
@@ -193,9 +219,13 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
                   onTripStatusUpdate?.(data.data);
                   break;
 
-                case "interrupt":
-                  assistantContent += `\n\n---\n\n*${data.message}*`;
+                case "interrupt": {
+                  setInterruptData({
+                    message: data.message,
+                    type: "info_confirm",
+                  });
                   break;
+                }
 
                 case "error":
                   assistantContent += `\n\n错误：${data.message}`;
@@ -235,7 +265,15 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
         scrollToBottom();
       }
     },
-    [threadId, scrollToBottom, onInfoUpdate, onPhaseUpdate, onPlanUpdate, onTripStatusUpdate],
+    [
+      threadId,
+      scrollToBottom,
+      onInfoUpdate,
+      onPhaseUpdate,
+      onPlanUpdate,
+      onTripStatusUpdate,
+      interruptData,
+    ],
   );
 
   useImperativeHandle(
@@ -250,6 +288,18 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
     e.preventDefault();
     handleSubmit();
   };
+
+  const handleConfirm = useCallback(
+    (message: string) => {
+      setInterruptData(null);
+      handleSubmit(message);
+    },
+    [handleSubmit],
+  );
+
+  const handleDismissInterrupt = useCallback(() => {
+    setInterruptData(null);
+  }, []);
 
   const isEmpty = messages.length === 0;
   const hasSteps = steps.length > 0;
@@ -310,6 +360,30 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
           )}
 
           <div ref={messagesEndRef} />
+        </div>
+      )}
+
+      {/* Interrupt confirmation card — info confirm only */}
+      {interruptData && (
+        <div className="confirm-card">
+          <div className="confirm-card-content">
+            {interruptData.message.split("\n").map((line, i) => (
+              <p key={i} className={line ? "" : "confirm-card-empty-line"}>
+                {line}
+              </p>
+            ))}
+          </div>
+          <div className="confirm-card-actions">
+            <button className="confirm-btn confirm-btn-ghost" onClick={handleDismissInterrupt}>
+              继续收集
+            </button>
+            <button
+              className="confirm-btn confirm-btn-primary"
+              onClick={() => handleConfirm("确认")}
+            >
+              生成计划
+            </button>
+          </div>
         </div>
       )}
 

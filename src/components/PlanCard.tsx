@@ -6,17 +6,18 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
+import rehypeSanitize from "rehype-sanitize";
 
 const remarkPlugins = [remarkGfm, remarkMath];
-const rehypePlugins = [rehypeKatex, rehypeHighlight];
+const rehypePlugins = [rehypeSanitize, rehypeKatex, rehypeHighlight];
 
 interface PlanCardProps {
   markdown: string;
   onSave?: () => void;
-  onRetry?: () => void;
+  onModify?: () => void;
 }
 
-export const PlanCard = memo(function PlanCard({ markdown, onSave, onRetry }: PlanCardProps) {
+export const PlanCard = memo(function PlanCard({ markdown, onSave, onModify }: PlanCardProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   if (collapsed) {
@@ -53,14 +54,14 @@ export const PlanCard = memo(function PlanCard({ markdown, onSave, onRetry }: Pl
         </ReactMarkdown>
       </div>
       <div className="plan-footer">
-        {onRetry && (
-          <button className="plan-btn plan-btn-ghost" onClick={onRetry}>
-            重新生成
+        {onModify && (
+          <button className="plan-btn plan-btn-ghost" onClick={onModify}>
+            补充修改
           </button>
         )}
         {onSave && (
           <button className="plan-btn plan-btn-primary" onClick={onSave}>
-            满意，保存
+            点击保存
           </button>
         )}
       </div>

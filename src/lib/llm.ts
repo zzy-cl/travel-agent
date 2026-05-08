@@ -8,10 +8,11 @@ export const model = new ChatAnthropic({
   model: process.env.LLM_MODEL || "deepseek-v4-pro",
   anthropicApiUrl: baseURL,
   apiKey: process.env.ANTHROPIC_API_KEY,
-  maxTokens: 8192,
+  maxTokens: 16384,
   thinking:
     process.env.LLM_THINKING === "false"
       ? { type: "disabled" as const }
-      : { type: "enabled" as const, budget_tokens: 10240 },
-  temperature: process.env.LLM_THINKING === "false" ? undefined : 1,
+      : { type: "enabled" as const, budget_tokens: 8192 },
+  ...(process.env.LLM_THINKING === "false" ? { temperature: 1 } : {}),
+  maxRetries: 3,
 });

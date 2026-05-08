@@ -1,123 +1,30 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useSyncExternalStore } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { ChatPanel, type ChatPanelHandle } from "@/components/ChatPanel";
 import { InfoSidebar } from "@/components/InfoSidebar";
 import { PlanCard } from "@/components/PlanCard";
 import { TripStatusBar } from "@/components/TripStatusBar";
 
-const SESSION_KEY = "travel-agent-session";
-
-interface SessionData {
-  collectedInfo: Record<string, unknown>;
-  phase: string;
-  planMarkdown: string | null;
-  tripStatus: string;
-}
-
-// Cache snapshot to avoid returning a new object on every call (prevents infinite loop)
-let cachedRaw: string | null = null;
-let cachedSession: SessionData | null = null;
-
-function getSession(): SessionData | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (raw === cachedRaw) return cachedSession;
-    cachedRaw = raw;
-    cachedSession = raw ? (JSON.parse(raw) as SessionData) : null;
-    return cachedSession;
-  } catch {
-    return null;
-  }
-}
-
-// SSR-safe localStorage subscription via useSyncExternalStore
-const subscribe = (callback: () => void) => {
-  window.addEventListener("storage", callback);
-  return () => window.removeEventListener("storage", callback);
-};
-const useSession = () => useSyncExternalStore(subscribe, getSession, () => null);
-
 export default function Home() {
-  const session = useSession();
-  const defaults = {
-    collectedInfo: { preferences: [], constraints: [] } as Record<string, unknown>,
-    phase: "info_gathering" as const,
-    planMarkdown: null as string | null,
-    tripStatus: "planning" as const,
-  };
-
-  const [collectedInfo, setCollectedInfo] = useState<Record<string, unknown>>(
-    session?.collectedInfo ?? defaults.collectedInfo,
-  );
-  const [phase, setPhase] = useState(session?.phase ?? defaults.phase);
-  const [planMarkdown, setPlanMarkdown] = useState<string | null>(
-    session?.planMarkdown ?? defaults.planMarkdown,
-  );
-  const [tripStatus, setTripStatus] = useState<"planning" | "ongoing" | "completed">(
-    (session?.tripStatus as "planning" | "ongoing" | "completed") ?? defaults.tripStatus,
-  );
+  const [collectedInfo, setCollectedInfo] = useState<Record<string, unknown>>({
+    preferences: [],
+    constraints: [],
+    highlights: [],
+  });
+  const [phase, setPhase] = useState<string>("info_gathering");
+  const [planMarkdown, setPlanMarkdown] = useState<string | null>(null);
+  const [tripStatus, setTripStatus] = useState<"planning" | "ongoing" | "completed">("planning");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // Cross-tab sync: update state when localStorage changes in another tab
-  useEffect(() => {
-    if (!session) return;
-    // Defer setState to avoid react-hooks/set-state-in-effect lint error
-    const id = requestAnimationFrame(() => {
-      setCollectedInfo((prev) => {
-        if (JSON.stringify(prev) === JSON.stringify(session.collectedInfo)) return prev;
-        return session.collectedInfo ?? defaults.collectedInfo;
-      });
-      setPhase((prev) => (prev === session.phase ? prev : (session.phase ?? defaults.phase)));
-      setPlanMarkdown((prev) =>
-        prev === session.planMarkdown ? prev : (session.planMarkdown ?? defaults.planMarkdown),
-      );
-      setTripStatus((prev) => {
-        const next =
-          (session.tripStatus as "planning" | "ongoing" | "completed") ?? defaults.tripStatus;
-        return prev === next ? prev : next;
-      });
-    });
-    return () => cancelAnimationFrame(id);
-  }, [session]); // eslint-disable-line react-hooks/exhaustive-deps -- session is the only changing dependency
-
-  // Restore message for ChatPanel
-  const restoreMessage = (() => {
-    if (!session) return undefined;
-    if (session.planMarkdown && session.phase === "confirming") {
-      return "已恢复上次的旅行计划。请查看上方内容，说'没问题'保存，或告诉我修改意见。";
-    }
-    if (session.phase === "planning" && session.collectedInfo.destination) {
-      const dest = session.collectedInfo.destination;
-      const days = session.collectedInfo.days;
-      return `已恢复之前的旅行信息（${dest}${days ? `，${days}天` : ""}）。请继续描述你的需求，或说"确认"开始生成计划。`;
-    }
-    return undefined;
-  })();
-
-  // Persist to localStorage (debounced)
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => {
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      try {
-        localStorage.setItem(
-          SESSION_KEY,
-          JSON.stringify({ collectedInfo, phase, planMarkdown, tripStatus }),
-        );
-      } catch {
-        // localStorage full or unavailable
-      }
-    }, 300);
-    return () => clearTimeout(saveTimerRef.current);
-  }, [collectedInfo, phase, planMarkdown, tripStatus]);
 
   const chatPanelRef = useRef<ChatPanelHandle>(null);
 
-  const handleInfoUpdate = useCallback(
-    (info: Record<string, unknown>) => setCollectedInfo((prev) => ({ ...prev, ...info })),
-    [],
-  );
+  const handleInfoUpdate = useCallback((info: Record<string, unknown>) => {
+    setCollectedInfo((prev) => {
+      if (JSON.stringify(prev) === JSON.stringify(info)) return prev;
+      return info as typeof prev;
+    });
+  }, []);
   const handlePhaseUpdate = useCallback((p: string) => setPhase(p), []);
   const handlePlanUpdate = useCallback((md: string | null) => setPlanMarkdown(md), []);
 
@@ -157,12 +64,13 @@ export default function Home() {
     a.href = url;
     a.download = `travel-plan-${new Date().toISOString().slice(0, 10)}.md`;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, [planMarkdown]);
-  const handlePlanRetry = useCallback(() => {
+
+  const handlePlanModify = useCallback(() => {
     setPlanMarkdown(null);
-    setPhase("planning");
-    chatPanelRef.current?.sendMessage("帮我重新规划旅行计划");
+    setPhase("info_gathering");
+    chatPanelRef.current?.sendMessage("我想补充或修改一些旅行信息");
   }, []);
 
   return (
@@ -219,7 +127,7 @@ export default function Home() {
             </button>
             <span className="hidden rounded-[var(--radius-pill)] border border-[rgba(0,122,255,0.15)] bg-[rgba(0,122,255,0.12)] px-3.5 py-1.5 text-[11px] font-semibold tracking-[0.02em] text-[#007AFF] md:inline">
               <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-[pulseLive_2s_infinite] rounded-full bg-[var(--success)] shadow-[0_0_6px_rgba(48,209,88,0.50)]" />
-              DeepSeek
+              MiMo
             </span>
           </div>
         </header>
@@ -230,7 +138,6 @@ export default function Home() {
           <div className="glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-xl)]">
             <ChatPanel
               ref={chatPanelRef}
-              restoreMessage={restoreMessage}
               onInfoUpdate={handleInfoUpdate}
               onPhaseUpdate={handlePhaseUpdate}
               onPlanUpdate={handlePlanUpdate}
@@ -287,7 +194,7 @@ export default function Home() {
       </div>
 
       {planMarkdown && (
-        <PlanCard markdown={planMarkdown} onSave={handlePlanSave} onRetry={handlePlanRetry} />
+        <PlanCard markdown={planMarkdown} onSave={handlePlanSave} onModify={handlePlanModify} />
       )}
     </>
   );

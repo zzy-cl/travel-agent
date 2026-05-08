@@ -6,9 +6,10 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
+import rehypeSanitize from "rehype-sanitize";
 
 const remarkPlugins = [remarkGfm, remarkMath];
-const rehypePlugins = [rehypeKatex, rehypeHighlight];
+const rehypePlugins = [rehypeSanitize, rehypeKatex, rehypeHighlight];
 
 interface MessageBubbleProps {
   role: "user" | "assistant";
@@ -25,14 +26,24 @@ function parseContent(raw: string): ContentPart[] {
   const parts: ContentPart[] = [];
   const regex = /<think>([\s\S]*?)<\/think>/g;
   let lastIndex = 0;
-  let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(raw)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ type: "text", content: raw.slice(lastIndex, match.index) });
+  for (const match of raw.matchAll(regex)) {
+    if (match.index! > lastIndex) {
+      parts.push({ type: "text", content: raw.slice(lastIndex, match.index!) });
     }
-    parts.push({ type: "thinking", content: match[1].trim() });
-    lastIndex = match.index + match[0].length;
+    // Skip matches inside code blocks (naive heuristic)
+    const beforeMatch = raw.slice(0, match.index!);
+    const backtickCount = (beforeMatch.match(/```/g) || []).length;
+    if (backtickCount % 2 === 0) {
+      parts.push({ type: "thinking", content: match[1].trim() });
+    } else {
+      // Inside a code block — treat as literal text
+      const end = match.index! + match[0].length;
+      parts.push({ type: "text", content: raw.slice(lastIndex, end) });
+      lastIndex = end;
+      continue;
+    }
+    lastIndex = match.index! + match[0].length;
   }
 
   if (lastIndex < raw.length) {

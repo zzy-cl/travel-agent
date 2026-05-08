@@ -14,13 +14,13 @@ const MAX_REQUESTS = 10; // 10 requests per minute per IP
 
 const store = new Map<string, RateLimitEntry>();
 
-// Cleanup stale entries periodically
-setInterval(() => {
+// Cleanup stale entries lazily on each request (serverless-safe — no setInterval)
+function cleanupStaleEntries(): void {
   const cutoff = Date.now() - WINDOW_MS * 2;
   for (const [key, entry] of store) {
     if (entry.lastRefill < cutoff) store.delete(key);
   }
-}, WINDOW_MS);
+}
 
 function getClientIp(req: NextRequest): string {
   return (
@@ -31,6 +31,7 @@ function getClientIp(req: NextRequest): string {
 }
 
 function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
+  cleanupStaleEntries();
   const now = Date.now();
   let entry = store.get(ip);
 
@@ -86,7 +87,3 @@ export function proxy(req: NextRequest) {
   response.headers.set("X-RateLimit-Remaining", String(remaining));
   return response;
 }
-
-export const config = {
-  matcher: "/api/chat",
-};

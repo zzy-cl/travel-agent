@@ -20,7 +20,9 @@ export function TripStatusBar({ status, destination }: TripStatusBarProps) {
     <div className="trip-status-bar">
       <div className="trip-status-dot" style={{ background: config.color }} />
       <span className="trip-status-label">{config.label}</span>
-      {destination && <span className="trip-status-dest">· {destination}</span>}
+      <span className="trip-status-dest" suppressHydrationWarning>
+        {destination ? `· ${destination}` : ""}
+      </span>
     </div>
   );
 }

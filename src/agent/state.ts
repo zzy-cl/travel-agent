@@ -14,7 +14,7 @@ export const AgentState = Annotation.Root({
   }),
   collectedInfo: Annotation<CollectedInfo>({
     reducer: (_, newVal) => newVal,
-    default: () => ({ preferences: [], constraints: [] }),
+    default: () => ({ preferences: [], constraints: [], highlights: [] }),
   }),
   phase: Annotation<Phase>({
     reducer: (_, newVal) => newVal,

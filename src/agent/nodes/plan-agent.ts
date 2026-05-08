@@ -3,29 +3,37 @@ import { model } from "../../lib/llm";
 import type { AgentStateType } from "../state";
 import { buildPlanSystemPrompt } from "../prompts/plan";
 import { planTools } from "../tools";
+import { extractAndCleanText } from "../../lib/tool-call-utils";
+import type { ToolInput } from "../../lib/types";
+import { extractTextContent, mergeCollectedInfo, stringifyToolResult } from "../../lib/agent-utils";
+
 const modelWithPlanTools = model.bindTools(planTools);
 
-export async function callPlanAgent(state: AgentStateType): Promise<Partial<AgentStateType>> {
+export async function planAgent(state: AgentStateType): Promise<Partial<AgentStateType>> {
   const systemPrompt = buildPlanSystemPrompt(state.collectedInfo, state.tripStatus);
   const messages = [{ role: "system", content: systemPrompt }, ...state.messages];
 
   let response = await modelWithPlanTools.invoke(messages);
 
+  // Track collectedInfo updates from update_collected_info tool calls, seeded from current state
+  let collectedInfoUpdates: AgentStateType["collectedInfo"] | null = { ...state.collectedInfo };
+
   // Tool call loop with dead-loop protection and data completeness check
   let rounds = 0;
-  const MAX_ROUNDS = 8;
+  const MAX_ROUNDS = 5;
   const calledTools = new Set<string>();
 
   while (AIMessage.isInstance(response) && (response.tool_calls?.length ?? 0) > 0) {
     rounds++;
-    const allMessages = [...messages, response];
-
     const toolCalls = response.tool_calls!;
     const hasSubmitPlan = toolCalls.some((tc) => tc.name === "submit_plan");
 
     // Soft constraint: if LLM tries to submit_plan without searching first, execute other tools first
     if (hasSubmitPlan && rounds <= 2) {
-      const hasSearched = calledTools.has("web_search") || calledTools.has("get_attraction_detail");
+      const hasSearched =
+        calledTools.has("web_search") ||
+        calledTools.has("get_attraction_detail") ||
+        calledTools.has("search_attractions");
       const hasWeather = calledTools.has("get_weather");
       if (!hasSearched || !hasWeather) {
         const missing = [];
@@ -34,25 +42,29 @@ export async function callPlanAgent(state: AgentStateType): Promise<Partial<Agen
 
         // Execute non-submit tools from this batch first
         const nonSubmitCalls = toolCalls.filter((tc) => tc.name !== "submit_plan");
+        const submitTc = toolCalls.find((tc) => tc.name === "submit_plan");
         const preToolMessages: ToolMessage[] = [];
         for (const tc of nonSubmitCalls) {
           calledTools.add(tc.name);
           const tool = planTools.find((t) => t.name === tc.name);
           if (tool) {
             try {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LangChain tool args
-              const result = await tool.invoke(tc.args as any);
+              const result = await tool.invoke(tc.args as ToolInput);
               preToolMessages.push(
                 new ToolMessage({
-                  content: typeof result === "string" ? result : JSON.stringify(result),
+                  content: stringifyToolResult(result),
                   tool_call_id: tc.id ?? "",
                   name: tc.name,
                 }),
               );
-            } catch {
+              if (tc.name === "update_collected_info") {
+                collectedInfoUpdates = mergeCollectedInfo(collectedInfoUpdates!, tc.args);
+              }
+            } catch (err) {
+              console.error(`[plan-agent] Tool ${tc.name} failed:`, err);
               preToolMessages.push(
                 new ToolMessage({
-                  content: `工具 ${tc.name} 执行失败`,
+                  content: `工具 ${tc.name} 执行失败。请用已有知识继续，不要重试此工具。`,
                   tool_call_id: tc.id ?? "",
                   name: tc.name,
                 }),
@@ -61,12 +73,23 @@ export async function callPlanAgent(state: AgentStateType): Promise<Partial<Agen
           }
         }
 
-        // Inject hint and let LLM decide (soft constraint)
+        // Add a tool_result for the skipped submit_plan to keep message history valid
+        if (submitTc) {
+          preToolMessages.push(
+            new ToolMessage({
+              content: `submit_plan 被暂缓执行。请先完成以下搜索：${missing.join("、")}。完成后可再次调用 submit_plan。`,
+              tool_call_id: submitTc.id ?? "",
+              name: "submit_plan",
+            }),
+          );
+        }
+
         response = await modelWithPlanTools.invoke([
-          ...allMessages,
+          ...messages,
+          response,
           ...preToolMessages,
           new HumanMessage({
-            content: `建议先用 ${missing.join("、")} 获取实时数据，再提交计划。如果你已有足够信息，可以直接调用 submit_plan。`,
+            content: `建议先用 ${missing.join("、")} 获取实时数据，再提交计划。如果工具失败，用已有知识继续，不要重试。如果你已有足够信息，可以直接调用 submit_plan。`,
           }),
         ]);
         continue;
@@ -76,23 +99,26 @@ export async function callPlanAgent(state: AgentStateType): Promise<Partial<Agen
     // Execute all tool calls
     const toolMessages: ToolMessage[] = [];
     for (const tc of toolCalls) {
-      calledTools.add(tc.name); // Track called tools for soft constraint
+      calledTools.add(tc.name);
       const tool = planTools.find((t) => t.name === tc.name);
       if (tool) {
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LangChain tool args
-          const result = await tool.invoke(tc.args as any);
+          const result = await tool.invoke(tc.args as ToolInput);
           toolMessages.push(
             new ToolMessage({
-              content: typeof result === "string" ? result : JSON.stringify(result),
+              content: stringifyToolResult(result),
               tool_call_id: tc.id ?? "",
               name: tc.name,
             }),
           );
-        } catch {
+          if (tc.name === "update_collected_info") {
+            collectedInfoUpdates = mergeCollectedInfo(collectedInfoUpdates!, tc.args);
+          }
+        } catch (err) {
+          console.error(`[plan-agent] Tool ${tc.name} failed:`, err);
           toolMessages.push(
             new ToolMessage({
-              content: `工具 ${tc.name} 执行失败`,
+              content: `工具 ${tc.name} 执行失败。请用已有知识继续，不要重试此工具。`,
               tool_call_id: tc.id ?? "",
               name: tc.name,
             }),
@@ -112,28 +138,28 @@ export async function callPlanAgent(state: AgentStateType): Promise<Partial<Agen
     // submit_plan was called — plan is ready
     if (hasSubmitPlan) {
       const planMarkdown = toolMessages.find((m) => m.name === "submit_plan")?.content;
-      const msg = `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见，如"第二天换成海边景点"`;
       return {
         messages: [response, ...toolMessages],
         phase: "confirming",
-        interruptMessage: msg,
         ...(planMarkdown
           ? {
               planMarkdown:
                 typeof planMarkdown === "string" ? planMarkdown : JSON.stringify(planMarkdown),
             }
           : {}),
+        ...(collectedInfoUpdates ? { collectedInfo: collectedInfoUpdates } : {}),
       };
     }
 
-    // Dead-loop protection (Bug #2 fix): force submit after MAX_ROUNDS
+    // Dead-loop protection: force submit after MAX_ROUNDS
     if (rounds >= MAX_ROUNDS) {
       const forceResponse = await modelWithPlanTools.invoke([
-        ...allMessages,
+        ...messages,
+        response,
         ...toolMessages,
         new HumanMessage({
           content:
-            "你已经搜索了足够多的信息。请立刻调用 submit_plan 工具提交旅行计划，不要再搜索或调用其他工具。",
+            "工具搜索多次失败或已达上限。请不要再搜索，直接使用已有信息调用 submit_plan 生成旅行计划。即使信息不完美也比没有计划好。",
         }),
       ]);
 
@@ -144,44 +170,73 @@ export async function callPlanAgent(state: AgentStateType): Promise<Partial<Agen
         const submitTc = forceResponse.tool_calls?.find((tc) => tc.name === "submit_plan");
         const submitTool = planTools.find((t) => t.name === "submit_plan");
         if (submitTc && submitTool) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LangChain tool args
-          const result = await submitTool.invoke(submitTc.args as any);
-          const msg = `旅行计划已生成！请查看上方内容。你可以：\n- 说"没问题"保存计划\n- 说修改意见`;
+          const result = await submitTool.invoke(submitTc.args as ToolInput);
+          const planText = stringifyToolResult(result);
+          const submitResultMsg = new ToolMessage({
+            content: planText,
+            tool_call_id: submitTc.id ?? "",
+            name: "submit_plan",
+          });
           return {
-            messages: [response, ...toolMessages, forceResponse],
+            messages: [response, ...toolMessages, forceResponse, submitResultMsg],
             phase: "confirming",
-            interruptMessage: msg,
-            planMarkdown: typeof result === "string" ? result : JSON.stringify(result),
+            planMarkdown: planText,
+            ...(collectedInfoUpdates ? { collectedInfo: collectedInfoUpdates } : {}),
           };
         }
       }
 
       // If LLM still won't call submit_plan, use text response as plan
+      // Build tool_result messages for any tool_use blocks in forceResponse
+      const forceToolResults: ToolMessage[] = [];
+      if (AIMessage.isInstance(forceResponse) && forceResponse.tool_calls?.length) {
+        for (const tc of forceResponse.tool_calls) {
+          forceToolResults.push(
+            new ToolMessage({
+              content: `工具 ${tc.name} 已跳过`,
+              tool_call_id: tc.id ?? "",
+              name: tc.name,
+            }),
+          );
+        }
+      }
       const fallbackContent = AIMessage.isInstance(forceResponse)
-        ? typeof forceResponse.content === "string"
-          ? forceResponse.content
-          : Array.isArray(forceResponse.content)
-            ? forceResponse.content
-                .filter((b): b is { type: "text"; text: string } => b.type === "text")
-                .map((b) => b.text)
-                .join("")
-            : ""
+        ? extractTextContent(forceResponse)
         : "";
-      const msg = fallbackContent
-        ? `旅行计划已生成！请查看上方内容。`
-        : `抱歉，计划生成遇到了问题。请告诉我更多关于你的偏好，我会重新规划。`;
       return {
-        messages: [response, ...toolMessages, forceResponse],
+        messages: [response, ...toolMessages, forceResponse, ...forceToolResults],
         phase: "confirming",
-        interruptMessage: msg,
         ...(fallbackContent ? { planMarkdown: fallbackContent } : {}),
+        ...(collectedInfoUpdates ? { collectedInfo: collectedInfoUpdates } : {}),
       };
     }
 
     // Continue loop — get next response from LLM
-    response = await modelWithPlanTools.invoke([...allMessages, ...toolMessages]);
+    response = await modelWithPlanTools.invoke([...messages, response, ...toolMessages]);
   }
 
-  // LLM responded without tool calls — shouldn't normally happen in planning phase
-  return { messages: [response] };
+  // Normal loop exit — LLM responded without tool calls.
+  // DeepSeek may still embed update_collected_info JSON as plain text in the response.
+  const responseText = AIMessage.isInstance(response) ? extractTextContent(response) : "";
+
+  const { textCalls, cleanText } = extractAndCleanText(responseText);
+
+  if (textCalls.length > 0) {
+    for (const tc of textCalls) {
+      if (tc.name === "update_collected_info") {
+        collectedInfoUpdates = mergeCollectedInfo(collectedInfoUpdates!, tc.args);
+      }
+    }
+    // Use cleaned text (JSON stripped) for display
+    const displayResponse = cleanText.length > 0 ? new AIMessage({ content: cleanText }) : response;
+    return {
+      messages: [displayResponse],
+      collectedInfo: collectedInfoUpdates ?? state.collectedInfo,
+    };
+  }
+
+  return {
+    messages: [response],
+    collectedInfo: collectedInfoUpdates ?? state.collectedInfo,
+  };
 }

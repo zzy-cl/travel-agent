@@ -11,6 +11,10 @@ export async function withRetry<T>(
   try {
     return await fn();
   } catch (error) {
+    // Do not retry client errors (4xx) — they won't succeed on retry
+    if (error instanceof Error && error.message.startsWith("HTTP 4")) {
+      throw error;
+    }
     if (retries > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay));
       return withRetry(fn, retries - 1, delay * 2);

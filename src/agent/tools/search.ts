@@ -1,20 +1,17 @@
 import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import { withRetry, fetchWithTimeout } from "../../lib/fetch-utils";
-import { searchCache } from "../../lib/cache";
 
 const BASE_URL = process.env.SEARXNG_BASE_URL || "https://searxng.zhaozeyu.top";
 
 export const webSearch = tool(
   async ({ query, count = 10 }: { query: string; count?: number }) => {
-    const cacheKey = `${query.trim()}:${count}`;
-    const cached = searchCache.get(cacheKey);
-    if (cached !== null) return `(缓存命中)\n${cached}`;
-
     const params = new URLSearchParams({
       q: query.trim(),
       count: count.toString(),
       format: "json",
+      language: "zh-CN",
+      locale: "zh",
     });
 
     try {
@@ -32,20 +29,18 @@ export const webSearch = tool(
 
       if (!data.results?.length) return "没有找到相关搜索结果。";
 
-      const result = data.results
+      return data.results
         .slice(0, count)
         .map((r, i) => `${i + 1}. **${r.title}**\n   URL: ${r.url}\n   摘要: ${r.content || "无"}`)
         .join("\n\n");
-
-      searchCache.set(cacheKey, result);
-      return result;
     } catch (error) {
       return `搜索失败: ${error instanceof Error ? error.message : String(error)}`;
     }
   },
   {
     name: "web_search",
-    description: "搜索网页获取最新信息，如景点门票价格、开放时间、网友评价等。",
+    description:
+      "搜索引擎网页搜索（基于 SearXNG），返回标题、URL 和摘要。适合查询最新票价、开放时间、网友评价、旅游攻略等实时信息。如果搜索结果中有重要攻略链接，可配合 fetch_search 获取页面全文。",
     schema: z.object({
       query: z.string().describe("搜索关键词"),
       count: z.number().min(1).max(20).optional().default(10).describe("结果数量"),
