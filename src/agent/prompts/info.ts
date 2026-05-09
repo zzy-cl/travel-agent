@@ -1,4 +1,18 @@
+// src/agent/prompts/info.ts
+// 信息收集节点的 System Prompt
+//
+// System Prompt 是发给 LLM 的第一条消息，定义 LLM 的角色、任务和行为规则。
+// 它不展示给用户，但决定了 LLM 的所有行为。
+//
+// ── 这个 prompt 的设计要点 ──
+// 1. 角色定义: "热情专业的旅行顾问" — 让 LLM 以顾问身份对话
+// 2. 信息清单: 告诉 LLM 需要收集哪些字段（核心/重要/可选）
+// 3. highlights 机制: 让 LLM 用动态标签捕获非结构化信息
+// 4. 工具调用规则: 强调 update_collected_info 必须一次性传入所有提取到的字段
+// 5. 安全规则: 防止 prompt injection
+
 export function buildInfoSystemPrompt(): string {
+  // 注入当前日期，让 LLM 知道"今天"是什么时候（影响日期推理，如"下周末"）
   const today = new Date().toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "long",

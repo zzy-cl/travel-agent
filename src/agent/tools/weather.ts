@@ -1,3 +1,17 @@
+// src/agent/tools/weather.ts
+// 天气查询工具 — 调用 QWeather（和风天气）API
+//
+// ── 调用流程 ──
+// 1. 城市搜索（geoapi.qweather.com）→ 获取城市 ID
+// 2. 实时天气（devapi.qweather.com/v7/weather/now）
+// 3. 空气质量（devapi.qweather.com/v7/air/now）
+// 4. 7 天预报（devapi.qweather.com/v7/weather/7d）
+//
+// ── 注意事项 ──
+// - 空气质量 API 需要数字格式的城市 ID，而城市搜索可能返回字母 ID（省级单位）
+//   所以优先选择数字 ID: location.find(l => /^\d+$/.test(l.id))
+// - 所有外部调用都用 withRetry + fetchWithTimeout 包装，防止超时和临时故障
+
 import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import { withRetry, fetchWithTimeout } from "../../lib/fetch-utils";
@@ -8,10 +22,11 @@ export const getWeather = tool(
     if (!apiKey) return "错误：未设置 QWEATHER_API_KEY 环境变量。";
 
     const cleanLocation = location.trim();
+    // 将天数限制在 1-7 范围内
     const effectiveDays = Math.max(1, Math.min(days ?? 1, 7));
 
     try {
-      // Step 1: City lookup
+      // Step 1: 城市搜索 → 获取城市 ID
       const searchUrl = new URL("https://geoapi.qweather.com/v2/city/lookup");
       searchUrl.searchParams.set("location", cleanLocation);
       searchUrl.searchParams.set("key", apiKey);
@@ -30,13 +45,13 @@ export const getWeather = tool(
         return `未找到位置 "${location}"。`;
       }
 
-      // Prefer numeric ID (air quality API requires it); fall back to first result
+      // 优先选择数字 ID（空气质量 API 要求）
       const numericLoc = searchData.location.find((l) => /^\d+$/.test(l.id));
       const loc = numericLoc ?? searchData.location[0];
       const locationId = loc.id;
       let result = `📍 ${loc.name}, ${loc.adm1}, ${loc.country}\n\n`;
 
-      // Step 2: Current weather
+      // Step 2: 实时天气
       const nowUrl = new URL("https://devapi.qweather.com/v7/weather/now");
       nowUrl.searchParams.set("location", locationId);
       nowUrl.searchParams.set("key", apiKey);
@@ -64,7 +79,7 @@ export const getWeather = tool(
         result += "\n\n";
       }
 
-      // Step 3: Air quality
+      // Step 3: 空气质量
       const airUrl = new URL("https://devapi.qweather.com/v7/air/now");
       airUrl.searchParams.set("location", locationId);
       airUrl.searchParams.set("key", apiKey);
@@ -101,10 +116,10 @@ export const getWeather = tool(
           result += "\n\n";
         }
       } catch {
-        // Air quality API may not be available for all locations
+        // 空气质量 API 不是所有地区都可用，静默忽略
       }
 
-      // Step 4: Forecast
+      // Step 4: 未来 N 天预报
       if (effectiveDays > 0) {
         const dailyUrl = new URL("https://devapi.qweather.com/v7/weather/7d");
         dailyUrl.searchParams.set("location", locationId);

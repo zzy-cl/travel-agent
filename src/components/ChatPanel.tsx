@@ -1,3 +1,39 @@
+// src/components/ChatPanel.tsx
+// 聊天面板组件 — 应用的核心交互区域
+//
+// 这个组件处理所有聊天相关的逻辑:
+// 1. 用户输入 → POST /api/chat → SSE 流式接收
+// 2. 解析 SSE 事件 → 更新消息列表、工具进度、侧边栏
+// 3. 展示中断确认卡片（info_collector 完成后）
+//
+// ── SSE 流式接收机制 ──
+// 浏览器通过 fetch() 发起请求，拿到 ReadableStream:
+//
+//   const response = await fetch("/api/chat", { method: "POST", body: ... });
+//   const reader = response.body.getReader();
+//   while (true) {
+//     const { done, value } = await reader.read();
+//     // value 是 Uint8Array，需要 TextDecoder 解码
+//   }
+//
+// 数据格式: "data: {JSON}\n\n"
+// 可能跨 chunk（一条 JSON 被分到两个 chunk），所以用 buffer 缓存处理。
+//
+// ── forwardRef + useImperativeHandle ──
+// 父组件（page.tsx）需要调用 ChatPanel 的 sendMessage 方法（如"补充修改"按钮）。
+// React 中子组件不能直接暴露方法，需要:
+// 1. forwardRef: 让父组件可以传 ref 给子组件
+// 2. useImperativeHandle: 定义 ref 暴露哪些方法
+//
+// ── 事件类型分发 ──
+// SSE 事件有 12 种类型，每种对应不同的 UI 更新:
+// thinking/token/replace → 消息文本
+// step/step_done → 工具进度条
+// info → 侧边栏
+// phase/tripStatus → 状态指示器
+// plan → 计划卡片
+// interrupt → 确认卡片
+
 "use client";
 
 import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from "react";
@@ -13,6 +49,7 @@ interface Message {
   content: string;
 }
 
+/** 工具执行进度条中的单个步骤 */
 interface StepItem {
   id: string;
   label: string;
@@ -30,8 +67,10 @@ interface ChatPanelProps {
   onTripStatusUpdate?: (status: string) => void;
 }
 
+// 快捷建议（空状态时展示）
 const SUGGESTIONS = ["🌸 我想去云南玩5天", "🏝️ 厦门3天亲子游", "🍜 成都美食之旅", "🏔️ 川西自驾7天"];
 
+// 工具名称 → 中文标签的映射
 const TOOL_LABELS: Record<string, string> = {
   get_weather: "查询目的地天气",
   web_search: "搜索最新旅游资讯",
@@ -73,13 +112,22 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
     abortControllerRef.current?.abort();
   }, []);
 
+  /**
+   * 核心: 发送消息并处理 SSE 流式响应。
+   *
+   * 流程:
+   * 1. 发送 POST /api/chat
+   * 2. 拿到 ReadableStream，逐块读取
+   * 3. 按 "\n" 分割，解析 "data: {JSON}" 行
+   * 4. 根据事件类型分发处理
+   */
   const handleSubmit = useCallback(
     async (text?: string) => {
       const userMessage = (text || inputRef.current).trim();
       if (!userMessage) return;
       if (isStreamingRef.current && !interruptData) return;
 
-      // Abort previous stream if confirming during streaming
+      // 如果正在流式输出时用户确认，先中断当前流
       if (isStreamingRef.current) {
         abortControllerRef.current?.abort();
       }
@@ -108,14 +156,16 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
         let assistantContent = "";
         let allThinking = "";
 
+        // 添加空的 assistant 消息占位，后续逐步填充
         setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
+        // buffer: 处理跨 chunk 的 JSON（一条 SSE 消息可能被分到两个 chunk）
         let buffer = "";
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
-            // Flush remaining buffer — the last SSE event may not end with \n
+            // 流结束: 处理 buffer 中剩余的数据
             if (buffer.trim()) {
               const remaining = buffer.split("\n");
               for (const line of remaining) {
@@ -127,23 +177,27 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
                   else if (data.type === "plan") onPlanUpdate(data.markdown);
                   else if (data.type === "tripStatus") onTripStatusUpdate?.(data.data);
                 } catch {
-                  // JSON parse failure on final flush — skip
+                  // 最后一条可能不完整，静默跳过
                 }
               }
             }
             break;
           }
 
+          // 将新数据追加到 buffer
           buffer += decoder.decode(value, { stream: true });
 
+          // 按 "\n" 分割，最后一行可能不完整，放回 buffer
           const lines = buffer.split("\n");
           buffer = lines.pop() || "";
 
+          // 逐行解析 SSE 事件
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue;
             try {
               const data = JSON.parse(line.slice(6));
 
+              // 更新消息文本的辅助函数
               const updateMessage = () => {
                 const display = allThinking
                   ? `<think>${allThinking}</think>\n${assistantContent}`
@@ -158,6 +212,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
                 });
               };
 
+              // 根据事件类型分发处理
               switch (data.type) {
                 case "thinking":
                   allThinking += data.content;
@@ -170,11 +225,13 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
                   break;
 
                 case "replace":
+                  // 节点完成后用干净文本替换流式文本（可能去掉了 JSON）
                   assistantContent = data.content;
                   updateMessage();
                   break;
 
                 case "step": {
+                  // 工具开始执行 → 添加到进度条
                   const toolNames: string[] = data.tools || [];
                   setSteps((prev) => {
                     const next = [...prev];
@@ -196,6 +253,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
                 }
 
                 case "step_done": {
+                  // 工具执行完成 → 标记 ✓
                   const toolName: string = data.tool;
                   setSteps((prev) =>
                     prev.map((s) => (s.id === toolName ? { ...s, status: "done" as const } : s)),
@@ -220,6 +278,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
                   break;
 
                 case "interrupt": {
+                  // 信息确认中断 → 显示确认卡片
                   setInterruptData({
                     message: data.message,
                     type: "info_confirm",
@@ -237,6 +296,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
           }
         }
 
+        // 最终更新消息（处理 thinking + text 的组合显示）
         if (allThinking && assistantContent) {
           setMessages((prev) => {
             const updated = [...prev];
@@ -276,6 +336,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
     ],
   );
 
+  // 暴露 sendMessage 方法给父组件（用于"补充修改"等按钮）
   useImperativeHandle(
     ref,
     () => ({
@@ -307,6 +368,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
   return (
     <div className="relative z-[1] flex h-full flex-col">
       {isEmpty ? (
+        // 空状态: 展示欢迎语和快捷建议
         <div className="empty-state">
           <div className="empty-icon-wrap">🌏</div>
           <div className="empty-title">告诉我你的旅行想法</div>
@@ -322,6 +384,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
           </div>
         </div>
       ) : (
+        // 消息列表
         <div className="messages flex-1 overflow-y-auto p-7">
           {messages.map((msg, i) => (
             <MessageBubble
@@ -332,7 +395,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
             />
           ))}
 
-          {/* 进度步骤展示 */}
+          {/* 工具执行进度条 */}
           {hasSteps && (
             <div className="steps-progress">
               {steps.map((step) => (
@@ -363,7 +426,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
         </div>
       )}
 
-      {/* Interrupt confirmation card — info confirm only */}
+      {/* 中断确认卡片 — info_collector 完成后展示，让用户确认或补充 */}
       {interruptData && (
         <div className="confirm-card">
           <div className="confirm-card-content">
@@ -387,6 +450,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, ChatPanelProps>(function Ch
         </div>
       )}
 
+      {/* 输入区域 */}
       <form onSubmit={handleFormSubmit} className="input-area">
         <input
           value={input}

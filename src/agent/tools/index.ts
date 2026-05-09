@@ -1,8 +1,21 @@
+// src/agent/tools/index.ts
+// 工具注册入口 — 注册所有工具并导出 LangChain 兼容的工具数组
+//
+// 这个文件是工具层的"组装车间":
+// 1. 导入所有工具的实现（weather、search、amap 等）
+// 2. 将它们注册到 toolRegistry
+// 3. 导出 planTools（plan_agent 节点使用的工具数组）
+//
+// ── 两种工具导出方式 ──
+// 1. planTools: 通过 registry.toLangChainTools() 导出，供 plan_agent 使用
+// 2. confirmInfo / updateCollectedInfo: 直接导出原始工具，供 info_collector 使用
+//    （因为 info_collector 只需要 2 个工具，不需要全部 8 个）
+
 import { toolRegistry } from "./registry";
 import { z } from "zod";
 import { stringifyToolResult } from "../../lib/agent-utils";
 
-// Import tool implementations
+// 导入所有工具实现
 import { getWeather } from "./weather";
 import { webSearch } from "./search";
 import { fetchSearch } from "./fetch";
@@ -12,10 +25,16 @@ import { getAttractionDetail } from "./attraction-detail";
 import { updateCollectedInfo } from "./update-info";
 import { collectedInfoSchema } from "../../schemas/collected-info";
 
+// LangChain tool.invoke 的输入类型（运行时由 Zod schema 校验）
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LangChain tool.invoke requires specific typed input; Zod schema validates at runtime
 type InvokeInput = any;
 
-// ── Tool Registry ──
+// ── 注册所有工具到 registry ──
+// 每个 register 调用定义了:
+// - name: LLM 调用时使用的名称
+// - description: LLM 根据描述判断何时调用
+// - schema: Zod 定义参数结构（会注入 system prompt 告诉 LLM）
+// - execute: 实际执行逻辑（调用外部 API）
 
 toolRegistry.register({
   name: "get_weather",
@@ -83,9 +102,11 @@ toolRegistry.register({
     stringifyToolResult(await getAttractionDetail.invoke(input as InvokeInput)),
 });
 
-// Export LangChain-compatible tools for graph nodes
+// ── 导出 ──
+
+/** plan_agent 使用的全部工具（8 个） */
 export const planTools = toolRegistry.toLangChainTools();
 
-// Direct exports for node usage
+/** info_collector 直接使用的工具（不经过 registry） */
 export { confirmInfo } from "./confirm-info";
 export { updateCollectedInfo } from "./update-info";

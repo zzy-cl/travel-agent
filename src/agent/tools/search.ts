@@ -1,3 +1,13 @@
+// src/agent/tools/search.ts
+// 网页搜索工具 — 调用 SearXNG 搜索引擎
+//
+// SearXNG 是一个开源的元搜索引擎，聚合多个搜索引擎的结果。
+// 本项目使用自托管的 SearXNG 实例，返回标题、URL 和摘要。
+//
+// ── 典型使用场景 ──
+// LLM 需要查询最新票价、开放时间、网友评价、旅游攻略时调用此工具。
+// 搜索结果中的 URL 可以传给 fetch_search 工具获取全文。
+
 import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import { withRetry, fetchWithTimeout } from "../../lib/fetch-utils";

@@ -1,3 +1,24 @@
+// src/agent/nodes/plan-agent.ts
+// 计划生成节点 — 多轮工具调用 + 旅行计划生成
+//
+// 这是 Agent 最复杂的节点。它的职责是:
+// 1. 根据收集到的旅行信息，调用多个工具（天气、搜索、地图）收集数据
+// 2. 综合所有数据，生成详细的旅行计划
+// 3. 通过 submit_plan 工具提交最终计划
+//
+// ── tool-call loop（工具调用循环）──
+// 这是 Agent 模式的核心工作方式:
+//
+//   LLM 推理 → 调用工具 → 执行工具 → 结果回传 → LLM 继续推理 → ... → 最终提交
+//
+// 每一轮循环中，LLM 可能调用 1 个或多个工具。
+// 例如第 1 轮调用 get_weather + search_attractions，第 2 轮调用 web_search + fetch_search。
+// 最多进行 MAX_ROUNDS 轮，防止死循环。
+//
+// ── submit_plan — 透传工具 ──
+// submit_plan 是一个"透传"工具: 它不调用任何外部 API，只是把 LLM 生成的
+// Markdown 文本原样返回。节点检测到 submit_plan 被调用后，就知道计划已生成完毕。
+
 import { AIMessage, ToolMessage, HumanMessage } from "@langchain/core/messages";
 import { model } from "../../lib/llm";
 import type { AgentStateType } from "../state";
@@ -7,28 +28,40 @@ import { extractAndCleanText } from "../../lib/tool-call-utils";
 import type { ToolInput } from "../../lib/types";
 import { extractTextContent, mergeCollectedInfo, stringifyToolResult } from "../../lib/agent-utils";
 
+// 绑定所有计划工具到 LLM（共 7 个工具）
 const modelWithPlanTools = model.bindTools(planTools);
 
+/**
+ * 计划生成节点函数。
+ *
+ * 输入: 当前 AgentState（messages + collectedInfo + tripStatus）
+ * 输出: Partial<AgentStateType>（新增消息 + 生成的计划 + 阶段变更）
+ */
 export async function planAgent(state: AgentStateType): Promise<Partial<AgentStateType>> {
+  // 构建 system prompt，包含用户需求和工具使用指南
   const systemPrompt = buildPlanSystemPrompt(state.collectedInfo, state.tripStatus);
   const messages = [{ role: "system", content: systemPrompt }, ...state.messages];
 
+  // 第一次调用 LLM
   let response = await modelWithPlanTools.invoke(messages);
 
-  // Track collectedInfo updates from update_collected_info tool calls, seeded from current state
+  // 跟踪 collectedInfo 的更新（plan_agent 也可能调用 update_collected_info）
   let collectedInfoUpdates: AgentStateType["collectedInfo"] | null = { ...state.collectedInfo };
 
-  // Tool call loop with dead-loop protection and data completeness check
+  // ── 工具调用循环 ──
   let rounds = 0;
-  const MAX_ROUNDS = 5;
-  const calledTools = new Set<string>();
+  const MAX_ROUNDS = 5; // 死循环保护: 最多 5 轮工具调用
+  const calledTools = new Set<string>(); // 记录已调用的工具（用于 soft constraint 检查）
 
+  // 循环条件: LLM 返回了 tool_calls → 继续执行工具
   while (AIMessage.isInstance(response) && (response.tool_calls?.length ?? 0) > 0) {
     rounds++;
     const toolCalls = response.tool_calls!;
     const hasSubmitPlan = toolCalls.some((tc) => tc.name === "submit_plan");
 
-    // Soft constraint: if LLM tries to submit_plan without searching first, execute other tools first
+    // ── Soft Constraint: 防止 LLM 跳过搜索直接提交 ──
+    // 有些 LLM（特别是快速模式下）会跳过搜索，直接用已有知识生成计划。
+    // 这里强制: 如果前 2 轮就调用 submit_plan 但还没搜索过，先执行搜索再提交。
     if (hasSubmitPlan && rounds <= 2) {
       const hasSearched =
         calledTools.has("web_search") ||
@@ -40,7 +73,7 @@ export async function planAgent(state: AgentStateType): Promise<Partial<AgentSta
         if (!hasWeather) missing.push("get_weather 查询天气");
         if (!hasSearched) missing.push("web_search 或 get_attraction_detail 搜索景点信息");
 
-        // Execute non-submit tools from this batch first
+        // 执行本轮中非 submit_plan 的工具
         const nonSubmitCalls = toolCalls.filter((tc) => tc.name !== "submit_plan");
         const submitTc = toolCalls.find((tc) => tc.name === "submit_plan");
         const preToolMessages: ToolMessage[] = [];
@@ -73,7 +106,7 @@ export async function planAgent(state: AgentStateType): Promise<Partial<AgentSta
           }
         }
 
-        // Add a tool_result for the skipped submit_plan to keep message history valid
+        // 为跳过的 submit_plan 生成一个 tool_result（保持消息链完整）
         if (submitTc) {
           preToolMessages.push(
             new ToolMessage({
@@ -84,6 +117,7 @@ export async function planAgent(state: AgentStateType): Promise<Partial<AgentSta
           );
         }
 
+        // 重新调用 LLM，附带提示信息
         response = await modelWithPlanTools.invoke([
           ...messages,
           response,
@@ -92,11 +126,11 @@ export async function planAgent(state: AgentStateType): Promise<Partial<AgentSta
             content: `建议先用 ${missing.join("、")} 获取实时数据，再提交计划。如果工具失败，用已有知识继续，不要重试。如果你已有足够信息，可以直接调用 submit_plan。`,
           }),
         ]);
-        continue;
+        continue; // 回到 while 循环顶部
       }
     }
 
-    // Execute all tool calls
+    // ── 执行所有工具调用 ──
     const toolMessages: ToolMessage[] = [];
     for (const tc of toolCalls) {
       calledTools.add(tc.name);
@@ -125,6 +159,7 @@ export async function planAgent(state: AgentStateType): Promise<Partial<AgentSta
           );
         }
       } else {
+        // LLM 调用了一个不存在的工具（不应该发生，但要做防御）
         toolMessages.push(
           new ToolMessage({
             content: `未知工具: ${tc.name}`,
@@ -135,7 +170,7 @@ export async function planAgent(state: AgentStateType): Promise<Partial<AgentSta
       }
     }
 
-    // submit_plan was called — plan is ready
+    // ── submit_plan 被调用 → 计划生成完毕 ──
     if (hasSubmitPlan) {
       const planMarkdown = toolMessages.find((m) => m.name === "submit_plan")?.content;
       return {
@@ -151,7 +186,7 @@ export async function planAgent(state: AgentStateType): Promise<Partial<AgentSta
       };
     }
 
-    // Dead-loop protection: force submit after MAX_ROUNDS
+    // ── 死循环保护: 达到最大轮次，强制提交 ──
     if (rounds >= MAX_ROUNDS) {
       const forceResponse = await modelWithPlanTools.invoke([
         ...messages,
@@ -163,6 +198,7 @@ export async function planAgent(state: AgentStateType): Promise<Partial<AgentSta
         }),
       ]);
 
+      // LLM 配合了 → 正常提取 submit_plan 结果
       if (
         AIMessage.isInstance(forceResponse) &&
         forceResponse.tool_calls?.some((tc) => tc.name === "submit_plan")
@@ -186,8 +222,7 @@ export async function planAgent(state: AgentStateType): Promise<Partial<AgentSta
         }
       }
 
-      // If LLM still won't call submit_plan, use text response as plan
-      // Build tool_result messages for any tool_use blocks in forceResponse
+      // LLM 仍然不配合 → 使用它的文本回复作为计划（最后手段）
       const forceToolResults: ToolMessage[] = [];
       if (AIMessage.isInstance(forceResponse) && forceResponse.tool_calls?.length) {
         for (const tc of forceResponse.tool_calls) {
@@ -211,12 +246,12 @@ export async function planAgent(state: AgentStateType): Promise<Partial<AgentSta
       };
     }
 
-    // Continue loop — get next response from LLM
+    // 继续循环 — 将工具结果回传给 LLM，让它决定下一步
     response = await modelWithPlanTools.invoke([...messages, response, ...toolMessages]);
   }
 
-  // Normal loop exit — LLM responded without tool calls.
-  // DeepSeek may still embed update_collected_info JSON as plain text in the response.
+  // ── 正常退出循环: LLM 没有调用工具，直接返回了文本 ──
+  // DeepSeek 可能把 update_collected_info JSON 嵌入到文本中（workaround）
   const responseText = AIMessage.isInstance(response) ? extractTextContent(response) : "";
 
   const { textCalls, cleanText } = extractAndCleanText(responseText);
@@ -227,7 +262,6 @@ export async function planAgent(state: AgentStateType): Promise<Partial<AgentSta
         collectedInfoUpdates = mergeCollectedInfo(collectedInfoUpdates!, tc.args);
       }
     }
-    // Use cleaned text (JSON stripped) for display
     const displayResponse = cleanText.length > 0 ? new AIMessage({ content: cleanText }) : response;
     return {
       messages: [displayResponse],

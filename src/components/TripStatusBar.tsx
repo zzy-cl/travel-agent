@@ -1,3 +1,15 @@
+// src/components/TripStatusBar.tsx
+// 旅行状态指示器 — 显示当前旅行的状态和目的地
+//
+// 三种状态:
+// - planning（规划中）: 蓝色
+// - ongoing（旅行中）: 绿色
+// - completed（已完成）: 灰色
+//
+// ── suppressHydrationWarning ──
+// SSR 时 destination 可能为空（服务端没有 localStorage 数据），
+// 客户端水合后才有值。suppressHydrationWarning 防止 React 报 hydration mismatch 警告。
+
 "use client";
 
 type TripStatus = "planning" | "ongoing" | "completed";

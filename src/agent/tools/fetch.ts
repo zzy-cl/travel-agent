@@ -1,12 +1,32 @@
+// src/agent/tools/fetch.ts
+// 网页内容抓取工具 — 获取 URL 页面的纯文本内容
+//
+// ── 工作流程 ──
+// 1. 验证 URL 格式
+// 2. 发起 HTTP 请求（15s 超时）
+// 3. 如果是 HTML 页面 → 提取纯文本（去 script/style 标签，HTML 实体解码）
+// 4. 截断到 8000 字符（防止超长页面消耗过多 token）
+//
+// ── htmlToText — 纯正则实现 ──
+// 为了减少依赖，HTML→text 转换完全用正则实现（不依赖 cheerio/jsdom）。
+// 策略: 先删 script/style/head，再把块标签转为换行，最后去所有标签。
+
 import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import { withRetry, fetchWithTimeout } from "../../lib/fetch-utils";
 
-const DEFAULT_TIMEOUT = 15000;
-const MAX_CONTENT_LENGTH = 8000;
+const DEFAULT_TIMEOUT = 15000; // 15 秒（网页抓取通常比 API 调用慢）
+const MAX_CONTENT_LENGTH = 8000; // 最大返回字符数
 
 /**
- * Extract readable text from HTML without external dependencies.
+ * 用正则将 HTML 转为纯文本。
+ *
+ * 处理步骤:
+ * 1. 删除不可见内容: <script>、<style>、<noscript>、<head>
+ * 2. 块标签转换行: </div>、</p>、<h1>-<h6>、</li> 等 → \n
+ * 3. 删除所有剩余标签: <...>
+ * 4. 解码 HTML 实体: &amp; → &、&lt; → <、&#123; → { 等
+ * 5. 合并多余空白
  */
 function htmlToText(html: string): string {
   let text = html
@@ -49,6 +69,7 @@ export const fetchSearch = tool(
   async ({ url }: { url: string }) => {
     const cleanUrl = url.trim();
 
+    // URL 格式验证
     try {
       new URL(cleanUrl);
     } catch {
@@ -70,12 +91,14 @@ export const fetchSearch = tool(
         const contentType = res.headers.get("content-type") || "";
         const raw = await res.text();
 
+        // HTML 页面 → 提取纯文本；其他类型（如 JSON）→ 直接返回
         if (contentType.includes("text/html") || raw.includes("</html>")) {
           return htmlToText(raw);
         }
         return raw;
       });
 
+      // 截断超长内容，附带原始长度提示
       let finalContent = data;
       if (finalContent.length > MAX_CONTENT_LENGTH) {
         finalContent =

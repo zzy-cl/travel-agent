@@ -1,9 +1,32 @@
+// src/agent/prompts/plan.ts
+// 计划生成节点的 System Prompt
+//
+// 这个 prompt 的核心职责:
+// 1. 定义 LLM 为"旅行规划师"角色
+// 2. 注入用户需求（collectedInfo 汇总）
+// 3. 描述 7 个工具的用途和调用顺序
+// 4. 定义输出格式（Markdown 旅行计划）
+// 5. 根据 tripStatus 切换模式（规划模式 vs 行中助手模式）
+//
+// ── 工具链设计 ──
+// prompt 中描述了工具之间的数据传递关系:
+// - search_attractions 返回经纬度 → 传给 search_nearby 搜索周边
+// - web_search 返回 URL → 传给 fetch_search 获取全文
+// 这种"工具链"设计让 LLM 能够组合多个工具获取完整信息。
+
 import type { CollectedInfo } from "../../schemas/collected-info";
 
+/**
+ * 构建计划生成的 system prompt。
+ *
+ * @param info 已收集的旅行信息，会汇总为文本注入 prompt
+ * @param tripStatus 旅行状态，决定 LLM 是"规划师"还是"行中助手"
+ */
 export function buildPlanSystemPrompt(
   info: CollectedInfo,
   tripStatus: "planning" | "ongoing" | "completed" = "planning",
 ): string {
+  // 将 collectedInfo 汇总为可读文本，注入 prompt
   const infoSummary = [
     info.destination && `目的地：${info.destination}`,
     info.days && `天数：${info.days}天`,
@@ -19,6 +42,7 @@ export function buildPlanSystemPrompt(
     .filter(Boolean)
     .join("\n");
 
+  // 根据旅行状态切换 prompt 内容
   const modeSection =
     tripStatus === "ongoing"
       ? `
@@ -42,6 +66,7 @@ export function buildPlanSystemPrompt(
 如果用户想修改旅行信息（如预算、日期、人数、偏好等），使用 **update_collected_info** 工具记录变更，然后重新调用相关工具获取最新数据并用 submit_plan 提交更新后的计划。
 `;
 
+  // 注入当前日期（让 LLM 知道"今天"，影响日期推理）
   const today = new Date().toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "long",

@@ -1,3 +1,21 @@
+// src/agent/tools/amap.ts
+// 地图搜索工具 — 调用高德地图（Amap）POI API
+//
+// 提供两个搜索功能:
+// 1. search_attractions: 按关键词搜索城市景点（文本搜索）
+// 2. search_nearby: 搜索某坐标周边 3km 的酒店/餐厅（周边搜索）
+//
+// ── 工具链设计 ──
+// search_attractions 返回的经纬度（如 "118.06,24.44"）可以:
+// - 直接传给 search_nearby，搜索该景点周边的住宿餐饮
+// - 传给 LLM 用于地理位置推理
+//
+// ── POI 类型码 ──
+// 高德用数字代码表示 POI 类型:
+// - 100000|080000|110000 → 风景名胜|博物馆/展览馆|公园
+// - 140000 → 住宿服务
+// - 050000 → 餐饮服务
+
 import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import { withRetry, fetchWithTimeout } from "../../lib/fetch-utils";
@@ -8,7 +26,7 @@ interface AmapPOI {
   name: string;
   address?: string;
   type?: string;
-  location: string; // "lng,lat"
+  location: string; // 格式: "经度,纬度"
   tel?: string;
 }
 
@@ -30,8 +48,10 @@ interface AmapNearbyResponse {
 }
 
 /**
- * Search attractions by keyword in a city.
- * Uses Amap POI text search, filtered to scenic spots (type 1000).
+ * 按关键词搜索城市景点。
+ *
+ * 使用高德 POI 文本搜索接口，筛选风景名胜、博物馆、公园等旅游相关类型。
+ * 返回景点名称、地址、经纬度、电话。
  */
 export const searchAttractions = tool(
   async ({ keyword, city }: { keyword: string; city: string }) => {
@@ -93,8 +113,10 @@ export const searchAttractions = tool(
 );
 
 /**
- * Search nearby hotels or restaurants around a location.
- * Uses Amap POI around search, 3km radius.
+ * 搜索某坐标周边的酒店或餐厅。
+ *
+ * 使用高德 POI 周边搜索接口，搜索指定经纬度 3km 范围内的酒店或餐厅。
+ * location 参数来自 search_attractions 返回的经纬度。
  */
 export const searchNearby = tool(
   async ({ location, type }: { location: string; type: "hotel" | "restaurant" }) => {
@@ -110,7 +132,7 @@ export const searchNearby = tool(
     const params = new URLSearchParams({
       location: cleanLocation,
       types: typeCode,
-      radius: "3000",
+      radius: "3000", // 搜索半径 3km
       key: apiKey,
       output: "json",
     });

@@ -1,3 +1,14 @@
+// src/components/PlanCard.tsx
+// 旅行计划卡片组件 — 全屏覆盖展示生成的旅行计划
+//
+// ── 功能 ──
+// 1. Markdown 渲染: 将 plan_agent 生成的 Markdown 渲染为格式化内容
+// 2. 折叠/展开: 可以最小化为底部条
+// 3. 操作按钮: "补充修改"（回到信息收集）和"点击保存"（下载 .md 文件）
+//
+// ── 触发时机 ──
+// 当 phase 变为 "confirming" 且 planMarkdown 不为空时，page.tsx 渲染此组件。
+
 "use client";
 
 import { useState, memo } from "react";

@@ -1,3 +1,31 @@
+// src/app/page.tsx
+// 主页面 — 应用的顶层组件，编排所有子组件
+//
+// ── 组件结构 ──
+//
+//   page.tsx（状态管理 + 布局编排）
+//   ├── ChatPanel（聊天面板 — 用户交互 + SSE 流式通信）
+//   ├── InfoSidebar（侧边栏 — 展示已收集信息）
+//   ├── PlanCard（计划卡片 — 展示生成的旅行计划）
+//   └── TripStatusBar（状态指示器）
+//
+// ── 状态提升（Lifting State Up）──
+// collectedInfo、phase、planMarkdown 等状态定义在 page.tsx 中，
+// 而不是各自的组件中。这是因为多个组件需要共享这些数据:
+// - ChatPanel 通过 SSE 事件更新这些状态
+// - InfoSidebar 和 PlanCard 读取这些状态来渲染 UI
+//
+// ── 数据流 ──
+//
+//   用户输入 → ChatPanel → POST /api/chat → SSE 流
+//   → onInfoUpdate / onPhaseUpdate / onPlanUpdate 回调
+//   → page.tsx setState
+//   → props 传给 InfoSidebar / PlanCard → UI 更新
+//
+// ── 移动端适配 ──
+// - 桌面: 左侧 ChatPanel + 右侧 InfoSidebar（始终可见）
+// - 移动: ChatPanel 全屏，InfoSidebar 通过滑动手势/按钮触发滑入
+
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -7,6 +35,7 @@ import { PlanCard } from "@/components/PlanCard";
 import { TripStatusBar } from "@/components/TripStatusBar";
 
 export default function Home() {
+  // ── 共享状态（由 ChatPanel 更新，由 InfoSidebar/PlanCard 读取）──
   const [collectedInfo, setCollectedInfo] = useState<Record<string, unknown>>({
     preferences: [],
     constraints: [],
@@ -17,10 +46,13 @@ export default function Home() {
   const [tripStatus, setTripStatus] = useState<"planning" | "ongoing" | "completed">("planning");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // ref: 用于调用 ChatPanel 的 sendMessage 方法（"补充修改"按钮）
   const chatPanelRef = useRef<ChatPanelHandle>(null);
 
+  // SSE 事件回调（传给 ChatPanel）
   const handleInfoUpdate = useCallback((info: Record<string, unknown>) => {
     setCollectedInfo((prev) => {
+      // 避免相同引用触发不必要的 re-render
       if (JSON.stringify(prev) === JSON.stringify(info)) return prev;
       return info as typeof prev;
     });
@@ -33,7 +65,7 @@ export default function Home() {
     [],
   );
 
-  // Swipe-to-close on mobile sidebar overlay
+  // ── 移动端侧边栏手势（右滑关闭）──
   const touchStartX = useRef(0);
   const handleSidebarTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -44,7 +76,7 @@ export default function Home() {
     }
   }, []);
 
-  // Escape key to close sidebar + auto-focus close button
+  // ── 侧边栏快捷键（Escape 关闭）──
   const sidebarCloseRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -56,7 +88,9 @@ export default function Home() {
     return () => document.removeEventListener("keydown", handleEscape);
   }, [sidebarOpen]);
 
-  // PlanCard callbacks
+  // ── PlanCard 回调 ──
+
+  /** 保存计划: 生成 .md 文件并触发下载 */
   const handlePlanSave = useCallback(() => {
     const blob = new Blob([planMarkdown ?? ""], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
@@ -67,6 +101,7 @@ export default function Home() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, [planMarkdown]);
 
+  /** 修改计划: 清空计划，回到信息收集阶段，自动发送补充消息 */
   const handlePlanModify = useCallback(() => {
     setPlanMarkdown(null);
     setPhase("info_gathering");
@@ -75,10 +110,11 @@ export default function Home() {
 
   return (
     <>
+      {/* 背景装饰层 */}
       <div className="bg-canvas" />
 
       <div className="shell-responsive relative z-[1] flex h-screen flex-col gap-3 p-3">
-        {/* Header */}
+        {/* ── Header ── */}
         <header className="glass glass-heavy z-10 flex flex-shrink-0 items-center justify-between rounded-[var(--radius-l)] px-6 py-3.5">
           <div className="relative z-[1] flex items-center gap-3.5">
             <div className="relative flex h-[42px] w-[42px] items-center justify-center overflow-hidden rounded-[14px] bg-gradient-to-br from-[#007AFF] via-[#5AC8FA] to-[#64D2FF] text-[22px] text-white shadow-[0_4px_16px_rgba(0,122,255,0.30),inset_0_1px_0_rgba(255,255,255,0.30)]">
@@ -95,7 +131,7 @@ export default function Home() {
             </div>
           </div>
           <div className="relative z-[1] flex items-center gap-2">
-            {/* TripStatusBar — desktop only */}
+            {/* TripStatusBar — 桌面端可见 */}
             <span className="hidden md:inline" suppressHydrationWarning>
               <TripStatusBar
                 status={tripStatus}
@@ -106,7 +142,7 @@ export default function Home() {
                 }
               />
             </span>
-            {/* Mobile sidebar toggle — CSS 媒体查询控制显示 */}
+            {/* 移动端侧边栏触发按钮 */}
             <button
               className="relative flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-[12px] border border-white/35 bg-white/15 text-lg text-[var(--text-secondary)] backdrop-blur-[20px] transition-all active:scale-95 active:bg-white/30 md:hidden"
               onClick={() => setSidebarOpen(true)}
@@ -125,6 +161,7 @@ export default function Home() {
               </svg>
               <div className="absolute inset-0 rounded-[inherit] bg-[linear-gradient(165deg,rgba(255,255,255,0.25)_0%,transparent_50%)]" />
             </button>
+            {/* 模型标识徽章 */}
             <span className="hidden rounded-[var(--radius-pill)] border border-[rgba(0,122,255,0.15)] bg-[rgba(0,122,255,0.12)] px-3.5 py-1.5 text-[11px] font-semibold tracking-[0.02em] text-[#007AFF] md:inline">
               <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-[pulseLive_2s_infinite] rounded-full bg-[var(--success)] shadow-[0_0_6px_rgba(48,209,88,0.50)]" />
               MiMo
@@ -132,9 +169,9 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Main area */}
+        {/* ── 主内容区 ── */}
         <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
-          {/* Chat Panel */}
+          {/* 聊天面板 */}
           <div className="glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-xl)]">
             <ChatPanel
               ref={chatPanelRef}
@@ -145,14 +182,14 @@ export default function Home() {
             />
           </div>
 
-          {/* Desktop Sidebar — CSS 媒体查询控制显示 */}
+          {/* 桌面端侧边栏 — 始终可见 */}
           <aside className="sidebar glass glass-light hidden md:flex">
             <InfoSidebar collectedInfo={collectedInfo} phase={phase} />
           </aside>
         </div>
       </div>
 
-      {/* Mobile Sidebar Overlay — CSS 媒体查询 + JS 状态控制滑入 */}
+      {/* ── 移动端侧边栏覆盖层 ── */}
       <div
         className={`fixed inset-0 z-[100] transition-opacity duration-300 md:hidden ${
           sidebarOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
@@ -160,11 +197,13 @@ export default function Home() {
         onTouchStart={handleSidebarTouchStart}
         onTouchEnd={handleSidebarTouchEnd}
       >
+        {/* 半透明遮罩（点击关闭） */}
         <div
           className="absolute inset-0 bg-black/20 backdrop-blur-[4px]"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
+        {/* 滑入面板 */}
         <div
           role="dialog"
           aria-modal="true"
@@ -173,7 +212,7 @@ export default function Home() {
             sidebarOpen ? "translate-x-0" : "translate-x-full"
           }`}
         >
-          <div className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] bg-[linear-gradient(165deg,rgba(255,255,255,0.30)_0%,rgba(255,255,255,0.05)_25%,transparent_50%)]" />
+          <div className="bg-[linear-gradient(165deg,rgba(255,255,255,0.30)_0%,rgba(255,255,255,0.05)_25%,transparent 50%)] pointer-events-none absolute inset-0 z-0 rounded-[inherit]" />
           <div className="pointer-events-none absolute inset-0 z-0 rounded-[inherit] shadow-[inset_0_1px_0_rgba(255,255,255,0.50),inset_0_-1px_0_rgba(255,255,255,0.08)]" />
 
           <div className="relative z-[1] flex items-center justify-between border-b border-white/15 px-5 py-4">
@@ -193,6 +232,7 @@ export default function Home() {
         </div>
       </div>
 
+      {/* 旅行计划卡片（有计划时渲染） */}
       {planMarkdown && (
         <PlanCard markdown={planMarkdown} onSave={handlePlanSave} onModify={handlePlanModify} />
       )}

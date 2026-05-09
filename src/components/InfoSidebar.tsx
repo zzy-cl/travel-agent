@@ -1,3 +1,19 @@
+// src/components/InfoSidebar.tsx
+// 信息侧边栏组件 — 展示已收集的旅行信息和当前阶段
+//
+// 这个组件是"只读"的 —— 它只展示数据，不修改数据。
+// 数据来自 ChatPanel 的 SSE 事件 → page.tsx 的 state → 通过 props 传入。
+//
+// ── 展示结构 ──
+// 1. 核心信息: 目的地、天数、人数、日期、预算
+// 2. 动态亮点: highlights 数组中的 label-value 对
+// 3. 其他信息: 交通、住宿、偏好、约束
+// 4. 当前阶段: info_gathering / planning / confirming / done
+//
+// ── memo 优化 ──
+// 使用 React.memo 包装，避免父组件 re-render 时不必要的更新。
+// 只有 collectedInfo 或 phase 变化时才重新渲染。
+
 "use client";
 
 import { memo } from "react";
@@ -12,6 +28,7 @@ interface Highlight {
   value: string;
 }
 
+/** 核心固定字段 */
 const coreFields = [
   { key: "destination", label: "目的地" },
   { key: "days", label: "天数", suffix: "天" },
@@ -20,6 +37,7 @@ const coreFields = [
   { key: "budget", label: "预算" },
 ];
 
+/** 辅助固定字段 */
 const extraFields: Array<{
   key: string;
   label: string;
@@ -32,6 +50,7 @@ const extraFields: Array<{
   { key: "constraints", label: "约束", isArray: true },
 ];
 
+/** 阶段 → 中文标签 + CSS 类名 */
 const phaseLabels: Record<string, { text: string; cls: string }> = {
   info_gathering: { text: "信息收集中...", cls: "phase-info" },
   planning: { text: "计划生成中...", cls: "phase-planning" },
@@ -40,6 +59,7 @@ const phaseLabels: Record<string, { text: string; cls: string }> = {
   done: { text: "已完成", cls: "phase-done" },
 };
 
+/** 安全提取 highlights 数组（类型守卫） */
 function getHighlights(raw: unknown): Highlight[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter(
@@ -51,6 +71,7 @@ function getHighlights(raw: unknown): Highlight[] {
   );
 }
 
+/** 单个字段行: 标签 + 值 + 状态指示点 */
 function FieldRow({
   label,
   value,
